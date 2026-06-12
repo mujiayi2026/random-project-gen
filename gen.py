@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """
-🎲 Random Project Generator
+🎲 Random Project Generator v3.0
 随机组合技术栈 + 项目类型 + 领域，帮你找灵感！
 
 Usage:
-    python3 gen.py              # 基础模式
-    python3 gen.py --ai         # AI 生成详细描述
-    python3 gen.py -n 3 --ai    # 生成 3 个 + AI 描述
-    python3 gen.py --save       # 保存到 ideas.md
-    python3 gen.py --hard       # 只生成高难度项目
+    python3 gen.py                    # 基础模式
+    python3 gen.py --ai               # AI 生成详细描述
+    python3 gen.py -n 3 --ai          # 生成 3 个 + AI 描述
+    python3 gen.py --save             # 保存到 ideas.md
+    python3 gen.py --hard             # 只生成高难度项目
+    python3 gen.py --tech python,node # 只用指定技术栈
+    python3 gen.py --scaffold         # 生成项目骨架代码
+    python3 gen.py --reroll tech      # 重新生成技术栈（交互模式）
 """
 
 import random
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 
@@ -98,6 +102,137 @@ TWISTS = [
 ]
 
 # ═══════════════════════════════════════════
+# 项目骨架模板
+# ═══════════════════════════════════════════
+
+SCAFFOLD_TEMPLATES = {
+    "Python": {
+        "files": {
+            "README.md": """# {project_name}
+
+{tagline}
+
+## 安装
+
+```bash
+pip install -r requirements.txt
+```
+
+## 使用
+
+```bash
+python main.py
+```
+
+## 功能
+
+{features_list}
+""",
+            "requirements.txt": "# 项目依赖\n",
+            "main.py": """#!/usr/bin/env python3
+\"\"\"
+{project_name} - {tagline}
+\"\"\"
+
+def main():
+    print("Hello from {project_name}!")
+
+if __name__ == "__main__":
+    main()
+""",
+            "config.py": """# 配置文件
+
+CONFIG = {{
+    "app_name": "{project_name}",
+    "version": "0.1.0",
+    "debug": True,
+}}
+""",
+            ".gitignore": """__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.env
+*.egg-info/
+dist/
+build/
+""",
+        },
+        "dirs": ["src", "tests", "docs"],
+    },
+    "Node.js": {
+        "files": {
+            "README.md": """# {project_name}
+
+{tagline}
+
+## 安装
+
+```bash
+npm install
+```
+
+## 使用
+
+```bash
+npm start
+```
+
+## 功能
+
+{features_list}
+""",
+            "package.json": """{{
+  "name": "{project_slug}",
+  "version": "0.1.0",
+  "description": "{tagline}",
+  "main": "index.js",
+  "scripts": {{
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "jest"
+  }},
+  "keywords": [],
+  "author": "",
+  "license": "MIT"
+}}
+""",
+            "index.js": """/**
+ * {project_name} - {tagline}
+ */
+
+function main() {{
+  console.log('Hello from {project_name}!');
+}}
+
+main();
+""",
+            ".gitignore": """node_modules/
+.env
+dist/
+*.log
+""",
+        },
+        "dirs": ["src", "tests", "docs"],
+    },
+    "default": {
+        "files": {
+            "README.md": """# {project_name}
+
+{tagline}
+
+## 功能
+
+{features_list}
+""",
+        },
+        "dirs": ["src", "tests", "docs"],
+    },
+}
+
+# ═══════════════════════════════════════════
 # AI 生成
 # ═══════════════════════════════════════════
 
@@ -106,7 +241,6 @@ def get_ai_description(idea):
     try:
         from openai import OpenAI
         
-        # 使用小米 MiMo API
         client = OpenAI(
             api_key="tp-clsya4dpckssktasruy67rtgkok2hgz40ni91gima67amar8",
             base_url="https://token-plan-cn.xiaomimimo.com/v1"
@@ -118,7 +252,6 @@ def get_ai_description(idea):
         d = idea["difficulty"]
         w = idea["twist"]
         
-        # 使用自然语言 prompt，不强制要求 JSON
         prompt = f"我在做一个{t['name']}项目，类型是{p['name']}，主题是{th['name']}，难度{d['name']}（{d['hours']}），特色是{w}。请给我：1)一个有创意的项目名称 2)一句话介绍 3)4个主要功能 4)2个技术亮点 5)快速开始步骤。简洁回答，用编号列表。"
 
         response = client.chat.completions.create(
@@ -150,9 +283,7 @@ def get_ai_description(idea):
             if not line:
                 continue
             
-            # 识别各部分
             if "项目名称" in line or line.startswith("1"):
-                # 提取名称（去掉编号和标记）
                 name = line.split("：")[-1].split(":")[-1].strip()
                 name = name.replace("**", "").strip()
                 if name:
@@ -166,7 +297,6 @@ def get_ai_description(idea):
                 current_section = "tagline"
             elif "功能" in line or line.startswith("3"):
                 current_section = "features"
-                # 检查同一行是否有内容
                 if "：" in line or ":" in line:
                     feat = line.split("：")[-1].split(":")[-1].strip()
                     feat = feat.replace("**", "").replace("-", "").strip()
@@ -215,59 +345,28 @@ def get_ai_description(idea):
         print(f"  ⚠️  AI 生成失败: {e}")
         return None
 
-def format_ai_idea(idea, ai_desc, index=None):
-    """格式化带 AI 描述的创意"""
-    t = idea["tech"]
-    p = idea["project"]
-    th = idea["theme"]
-    d = idea["difficulty"]
-    w = idea["twist"]
-    stars = "⭐" * d["stars"]
-    
-    prefix = f"#{index}  " if index else ""
-    
-    lines = []
-    lines.append(f"  {prefix}{'═' * 44}")
-    lines.append(f"  📦 {ai_desc['project_name']}")
-    lines.append(f"  💬 {ai_desc['tagline']}")
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  {t['emoji']} 技术栈: {t['name']}")
-    lines.append(f"  {p['emoji']} 项目类型: {p['name']}")
-    lines.append(f"  {th['emoji']} 领域: {th['name']}")
-    lines.append(f"  {d['emoji']} 难度: {d['name']} {stars} (预计 {d['hours']})")
-    lines.append(f"  ✨ Twist: {w}")
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  📝 项目描述:")
-    
-    # 自动换行
-    desc = ai_desc['description']
-    for i in range(0, len(desc), 40):
-        lines.append(f"     {desc[i:i+40]}")
-    
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  🎯 核心功能:")
-    for feat in ai_desc['features']:
-        lines.append(f"     • {feat}")
-    
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  🔧 技术亮点:")
-    for highlight in ai_desc['tech_highlights']:
-        lines.append(f"     • {highlight}")
-    
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  🚀 快速开始:")
-    lines.append(f"     {ai_desc['getting_started']}")
-    lines.append(f"  {'═' * 44}")
-    
-    return "\n".join(lines)
-
 # ═══════════════════════════════════════════
-# 基础模式
+# 核心功能
 # ═══════════════════════════════════════════
 
-def generate_idea(hard_mode=False):
+def get_tech_stacks_by_filter(tech_filter):
+    """根据过滤条件筛选技术栈"""
+    if not tech_filter:
+        return TECH_STACKS
+    
+    filter_names = [t.strip().lower() for t in tech_filter.split(",")]
+    filtered = []
+    
+    for tech in TECH_STACKS:
+        if tech["name"].lower() in filter_names:
+            filtered.append(tech)
+    
+    return filtered if filtered else TECH_STACKS
+
+def generate_idea(hard_mode=False, tech_filter=None):
     """生成一个随机项目创意"""
-    tech = random.choice(TECH_STACKS)
+    available_techs = get_tech_stacks_by_filter(tech_filter)
+    tech = random.choice(available_techs)
     proj = random.choice(PROJECT_TYPES)
     theme = random.choice(THEMES)
     
@@ -285,6 +384,20 @@ def generate_idea(hard_mode=False):
         "difficulty": diff,
         "twist": twist,
     }
+
+def reroll_component(idea, component):
+    """重新生成指定组件"""
+    if component == "tech":
+        idea["tech"] = random.choice(TECH_STACKS)
+    elif component == "project":
+        idea["project"] = random.choice(PROJECT_TYPES)
+    elif component == "theme":
+        idea["theme"] = random.choice(THEMES)
+    elif component == "difficulty":
+        idea["difficulty"] = random.choice(DIFFICULTIES)
+    elif component == "twist":
+        idea["twist"] = random.choice(TWISTS)
+    return idea
 
 def format_idea(idea, index=None):
     """格式化基础创意"""
@@ -314,6 +427,50 @@ def format_idea(idea, index=None):
     ]
     suggested_name = random.choice(name_ideas)
     lines.append(f"  📦 建议项目名: {suggested_name}")
+    
+    return "\n".join(lines)
+
+def format_ai_idea(idea, ai_desc, index=None):
+    """格式化带 AI 描述的创意"""
+    t = idea["tech"]
+    p = idea["project"]
+    th = idea["theme"]
+    d = idea["difficulty"]
+    w = idea["twist"]
+    stars = "⭐" * d["stars"]
+    prefix = f"#{index}  " if index else ""
+    
+    lines = []
+    lines.append(f"  {prefix}{'═' * 44}")
+    lines.append(f"  📦 {ai_desc['project_name']}")
+    lines.append(f"  💬 {ai_desc['tagline']}")
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  {t['emoji']} 技术栈: {t['name']}")
+    lines.append(f"  {p['emoji']} 项目类型: {p['name']}")
+    lines.append(f"  {th['emoji']} 领域: {th['name']}")
+    lines.append(f"  {d['emoji']} 难度: {d['name']} {stars} (预计 {d['hours']})")
+    lines.append(f"  ✨ Twist: {w}")
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  📝 项目描述:")
+    
+    desc = ai_desc['description']
+    for i in range(0, len(desc), 40):
+        lines.append(f"     {desc[i:i+40]}")
+    
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  🎯 核心功能:")
+    for feat in ai_desc['features']:
+        lines.append(f"     • {feat}")
+    
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  🔧 技术亮点:")
+    for highlight in ai_desc['tech_highlights']:
+        lines.append(f"     • {highlight}")
+    
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  🚀 快速开始:")
+    lines.append(f"     {ai_desc['getting_started']}")
+    lines.append(f"  {'═' * 44}")
     
     return "\n".join(lines)
 
@@ -349,6 +506,48 @@ def save_ideas(ideas, ai_descriptions=None, filename="ideas.md"):
     
     print(f"\n  💾 已保存到 {filename}")
 
+def generate_scaffold(idea, ai_desc=None):
+    """生成项目骨架"""
+    t = idea["tech"]
+    project_name = ai_desc["project_name"] if ai_desc else f"{t['name']}Project"
+    tagline = ai_desc["tagline"] if ai_desc else idea["theme"]["desc"]
+    features = ai_desc["features"] if ai_desc else ["功能1", "功能2", "功能3", "功能4"]
+    
+    # 创建项目目录
+    project_slug = project_name.lower().replace(" ", "-").replace("(", "").replace(")", "")
+    project_dir = f"projects/{project_slug}"
+    
+    if os.path.exists(project_dir):
+        print(f"  ⚠️  目录已存在: {project_dir}")
+        return project_dir
+    
+    # 获取模板
+    template = SCAFFOLD_TEMPLATES.get(t["name"], SCAFFOLD_TEMPLATES["default"])
+    
+    # 创建目录
+    os.makedirs(project_dir, exist_ok=True)
+    for d in template["dirs"]:
+        os.makedirs(f"{project_dir}/{d}", exist_ok=True)
+    
+    # 创建文件
+    features_list = "\n".join([f"- {f}" for f in features])
+    
+    for filename, content in template["files"].items():
+        filepath = f"{project_dir}/{filename}"
+        formatted_content = content.format(
+            project_name=project_name,
+            project_slug=project_slug,
+            tagline=tagline,
+            features_list=features_list,
+        )
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(formatted_content)
+    
+    # 初始化 git
+    os.system(f"cd {project_dir} && git init -q 2>/dev/null")
+    
+    return project_dir
+
 # ═══════════════════════════════════════════
 # 主程序
 # ═══════════════════════════════════════════
@@ -359,36 +558,69 @@ def main():
     parser.add_argument("--save", action="store_true", help="保存到 ideas.md")
     parser.add_argument("--hard", action="store_true", help="只生成高难度项目")
     parser.add_argument("--ai", action="store_true", help="用 AI 生成详细描述")
+    parser.add_argument("--tech", type=str, help="指定技术栈 (逗号分隔，如 python,node)")
+    parser.add_argument("--scaffold", action="store_true", help="生成项目骨架代码")
+    parser.add_argument("--reroll", type=str, choices=["tech", "project", "theme", "difficulty", "twist"],
+                       help="重新生成指定组件 (交互模式)")
     args = parser.parse_args()
     
     print()
     print("  ╔══════════════════════════════════════╗")
-    print("  ║   🎲 Random Project Generator        ║")
+    print("  ║   🎲 Random Project Generator v3.0   ║")
     print("  ║   帮你找到下一个 vibecoding 项目!     ║")
     if args.ai:
         print("  ║   ✨ AI 增强模式已启用                ║")
+    if args.tech:
+        print(f"  ║   🎯 技术栈过滤: {args.tech:<19}║")
+    if args.scaffold:
+        print("  ║   🏗️  骨架生成模式已启用              ║")
     print("  ╚══════════════════════════════════════╝")
     print()
     
     ideas = []
     ai_descriptions = []
     
-    for i in range(args.count):
-        idea = generate_idea(hard_mode=args.hard)
+    # 如果是 reroll 模式，先生成一个基础创意
+    if args.reroll:
+        idea = generate_idea(hard_mode=args.hard, tech_filter=args.tech)
+        idea = reroll_component(idea, args.reroll)
         ideas.append(idea)
         
         if args.ai:
-            print(f"  🤖 正在为第 {i+1} 个项目生成 AI 描述...")
+            print(f"  🤖 正在生成 AI 描述...")
             ai_desc = get_ai_description(idea)
             ai_descriptions.append(ai_desc)
-            
             if ai_desc:
-                print(format_ai_idea(idea, ai_desc, index=i+1 if args.count > 1 else None))
+                print(format_ai_idea(idea, ai_desc))
+            else:
+                print(format_idea(idea))
+        else:
+            print(format_idea(idea))
+    else:
+        for i in range(args.count):
+            idea = generate_idea(hard_mode=args.hard, tech_filter=args.tech)
+            ideas.append(idea)
+            
+            if args.ai:
+                print(f"  🤖 正在为第 {i+1} 个项目生成 AI 描述...")
+                ai_desc = get_ai_description(idea)
+                ai_descriptions.append(ai_desc)
+                if ai_desc:
+                    print(format_ai_idea(idea, ai_desc, index=i+1 if args.count > 1 else None))
+                else:
+                    print(format_idea(idea, index=i+1 if args.count > 1 else None))
             else:
                 print(format_idea(idea, index=i+1 if args.count > 1 else None))
-        else:
-            print(format_idea(idea, index=i+1 if args.count > 1 else None))
-        
+            
+            print()
+    
+    # 生成骨架
+    if args.scaffold:
+        print("  🏗️  正在生成项目骨架...")
+        for i, idea in enumerate(ideas):
+            ai_desc = ai_descriptions[i] if i < len(ai_descriptions) and ai_descriptions[i] else None
+            project_dir = generate_scaffold(idea, ai_desc)
+            print(f"  ✅ 项目骨架已生成: {project_dir}")
         print()
     
     if args.save:
