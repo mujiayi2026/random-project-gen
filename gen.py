@@ -14,11 +14,16 @@ Usage:
     python3 gen.py --reroll tech      # 重新生成技术栈（交互模式）
     python3 gen.py --history          # 查看历史记录
     python3 gen.py --stats            # 查看使用统计
+    python3 gen.py -n 3 --export      # 导出为 JSON (默认)
+    python3 gen.py --export csv       # 导出为 CSV
+    python3 gen.py --export md        # 导出为 Markdown
+    python3 gen.py --export json --export-file my_ideas.json  # 指定文件名
 """
 
 import random
 import argparse
 import json
+import csv
 import os
 import sys
 from datetime import datetime
@@ -628,6 +633,141 @@ def save_ideas(ideas, ai_descriptions=None, filename="ideas.md"):
     
     print(f"\n  💾 已保存到 {filename}")
 
+def export_json(ideas, ai_descriptions=None, filename=None):
+    """导出创意为 JSON 格式"""
+    if not filename:
+        filename = f"ideas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    
+    data = []
+    for i, idea in enumerate(ideas):
+        entry = {
+            "index": i + 1,
+            "tech": idea["tech"]["name"],
+            "tech_tags": idea["tech"]["tags"],
+            "project_type": idea["project"]["name"],
+            "project_desc": idea["project"]["desc"],
+            "theme": idea["theme"]["name"],
+            "theme_desc": idea["theme"]["desc"],
+            "difficulty": idea["difficulty"]["name"],
+            "difficulty_hours": idea["difficulty"]["hours"],
+            "difficulty_stars": idea["difficulty"]["stars"],
+            "twist": idea["twist"],
+            "generated_at": datetime.now().isoformat(),
+        }
+        if ai_descriptions and i < len(ai_descriptions) and ai_descriptions[i]:
+            ai = ai_descriptions[i]
+            entry["ai"] = {
+                "project_name": ai.get("project_name", ""),
+                "tagline": ai.get("tagline", ""),
+                "description": ai.get("description", ""),
+                "features": ai.get("features", []),
+                "tech_highlights": ai.get("tech_highlights", []),
+                "getting_started": ai.get("getting_started", ""),
+            }
+        data.append(entry)
+    
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    
+    print(f"\n  💾 已导出 JSON: {filename} ({len(data)} 条)")
+    return filename
+
+
+def export_csv(ideas, ai_descriptions=None, filename=None):
+    """导出创意为 CSV 格式"""
+    if not filename:
+        filename = f"ideas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    
+    fieldnames = [
+        "index", "tech", "project_type", "theme", "difficulty",
+        "difficulty_hours", "difficulty_stars", "twist",
+        "ai_project_name", "ai_tagline", "ai_features", "generated_at",
+    ]
+    
+    with open(filename, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for i, idea in enumerate(ideas):
+            row = {
+                "index": i + 1,
+                "tech": idea["tech"]["name"],
+                "project_type": idea["project"]["name"],
+                "theme": idea["theme"]["name"],
+                "difficulty": idea["difficulty"]["name"],
+                "difficulty_hours": idea["difficulty"]["hours"],
+                "difficulty_stars": idea["difficulty"]["stars"],
+                "twist": idea["twist"],
+                "ai_project_name": "",
+                "ai_tagline": "",
+                "ai_features": "",
+                "generated_at": datetime.now().isoformat(),
+            }
+            if ai_descriptions and i < len(ai_descriptions) and ai_descriptions[i]:
+                ai = ai_descriptions[i]
+                row["ai_project_name"] = ai.get("project_name", "")
+                row["ai_tagline"] = ai.get("tagline", "")
+                row["ai_features"] = " | ".join(ai.get("features", []))
+            writer.writerow(row)
+    
+    print(f"\n  💾 已导出 CSV: {filename} ({len(ideas)} 条)")
+    return filename
+
+
+def export_markdown(ideas, ai_descriptions=None, filename=None):
+    """导出创意为独立 Markdown 文件（覆盖而非追加）"""
+    if not filename:
+        filename = f"ideas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(f"# 🎲 Random Project Ideas\n\n")
+        f.write(f"> Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        f.write(f"Total: **{len(ideas)}** ideas\n\n---\n\n")
+        
+        for i, idea in enumerate(ideas):
+            t = idea["tech"]
+            p = idea["project"]
+            th = idea["theme"]
+            d = idea["difficulty"]
+            w = idea["twist"]
+            stars = "⭐" * d["stars"]
+            
+            if ai_descriptions and i < len(ai_descriptions) and ai_descriptions[i]:
+                ai = ai_descriptions[i]
+                f.write(f"## {i+1}. 📦 {ai['project_name']}\n\n")
+                f.write(f"> {ai['tagline']}\n\n")
+                f.write(f"| 属性 | 值 |\n|---|---|\n")
+                f.write(f"| 技术栈 | {t['emoji']} {t['name']} |\n")
+                f.write(f"| 项目类型 | {p['emoji']} {p['name']} |\n")
+                f.write(f"| 领域 | {th['emoji']} {th['name']} |\n")
+                f.write(f"| 难度 | {d['emoji']} {d['name']} {stars} ({d['hours']}) |\n")
+                f.write(f"| Twist | {w} |\n\n")
+                f.write(f"**描述**: {ai['description']}\n\n")
+                if ai.get("features"):
+                    f.write(f"**核心功能**:\n")
+                    for feat in ai["features"]:
+                        f.write(f"- {feat}\n")
+                    f.write("\n")
+                if ai.get("tech_highlights"):
+                    f.write(f"**技术亮点**:\n")
+                    for hl in ai["tech_highlights"]:
+                        f.write(f"- {hl}\n")
+                    f.write("\n")
+            else:
+                f.write(f"## {i+1}. {t['emoji']} {t['name']} + {p['name']} + {th['name']}\n\n")
+                f.write(f"| 属性 | 值 |\n|---|---|\n")
+                f.write(f"| 技术栈 | {t['emoji']} {t['name']} |\n")
+                f.write(f"| 项目类型 | {p['emoji']} {p['name']} — {p['desc']} |\n")
+                f.write(f"| 领域 | {th['emoji']} {th['name']} — {th['desc']} |\n")
+                f.write(f"| 难度 | {d['emoji']} {d['name']} {stars} ({d['hours']}) |\n")
+                f.write(f"| Twist | {w} |\n\n")
+            
+            f.write("---\n\n")
+    
+    print(f"\n  💾 已导出 Markdown: {filename} ({len(ideas)} 条)")
+    return filename
+
+
 def generate_scaffold(idea, ai_desc=None):
     """生成项目骨架"""
     t = idea["tech"]
@@ -686,6 +826,11 @@ def main():
                        help="重新生成指定组件 (交互模式)")
     parser.add_argument("--history", action="store_true", help="查看历史记录")
     parser.add_argument("--stats", action="store_true", help="查看使用统计")
+    parser.add_argument("--export", type=str, nargs="?", const="json", default=None,
+                       metavar="FORMAT",
+                       help="导出为文件 (json/csv/md, 默认 json)")
+    parser.add_argument("--export-file", type=str, default=None,
+                       help="指定导出文件名 (配合 --export 使用)")
     args = parser.parse_args()
 
     if args.history:
@@ -760,6 +905,19 @@ def main():
     
     if args.save:
         save_ideas(ideas, ai_descriptions if args.ai else None)
+    
+    # 导出功能
+    if args.export is not None:
+        fmt = args.export.lower()
+        ai_descs = ai_descriptions if args.ai else None
+        if fmt == "json":
+            export_json(ideas, ai_descs, args.export_file)
+        elif fmt == "csv":
+            export_csv(ideas, ai_descs, args.export_file)
+        elif fmt in ("md", "markdown"):
+            export_markdown(ideas, ai_descs, args.export_file)
+        else:
+            print(f"\n  ⚠️  不支持的导出格式: {fmt} (支持: json, csv, md)")
     
     encouragements = [
         "去吧，写点有意思的东西！🚀",
