@@ -19,6 +19,8 @@ Usage:
     python3 gen.py --export csv       # 导出为 CSV
     python3 gen.py --export md        # 导出为 Markdown
     python3 gen.py --export json --export-file my_ideas.json  # 指定文件名
+    python3 gen.py --score             # 显示项目评分
+    python3 gen.py -n 3 --score --ai   # AI + 评分组合
 """
 
 import random
@@ -28,6 +30,7 @@ import csv
 import os
 import sys
 import time
+import hashlib
 from datetime import datetime
 from collections import Counter
 
@@ -62,7 +65,7 @@ def load_history():
     except (json.JSONDecodeError, IOError):
         return []
 
-def save_to_history(idea, ai_desc=None):
+def save_to_history(idea, ai_desc=None, score=None):
     """保存一条生成记录到历史"""
     history = load_history()
     record = {
@@ -76,6 +79,9 @@ def save_to_history(idea, ai_desc=None):
     if ai_desc:
         record["project_name"] = ai_desc.get("project_name", "")
         record["tagline"] = ai_desc.get("tagline", "")
+    if score:
+        record["score"] = score["total"]
+        record["grade"] = score["grade"]
     history.append(record)
     # 保留最近 500 条
     if len(history) > 500:
@@ -338,6 +344,174 @@ TWISTS = [
     "做一个 mobile-first 的版本",
     "加上完善的测试覆盖",
 ]
+
+# ═══════════════════════════════════════════
+# 项目评分系统
+# ═══════════════════════════════════════════
+
+# 技术栈创新度权重（新兴/小众技术得分更高）
+TECH_INNOVATION = {
+    "Zig": 95, "Elixir": 85, "Rust": 80, "Svelte": 75, "Flutter": 70,
+    "Kotlin": 65, "Go": 60, "Swift": 55, "TypeScript": 50, "Vue": 50,
+    "React": 40, "C++": 40, "Python": 35, "Node.js": 30, "Lua": 70,
+}
+
+# 项目类型实用性权重
+PROJECT_PRACTICALITY = {
+    "CLI 工具": 90, "API 服务": 85, "Web 应用": 80, "桌面应用": 75,
+    "移动应用": 75, "数据管道": 80, "微服务": 70, "浏览器扩展": 65,
+    "Telegram Bot": 60, "VS Code 扩展": 65, "终端 UI": 55, "游戏": 45,
+}
+
+# 主题市场潜力
+THEME_POTENTIAL = {
+    "AI/ML": 95, "DevOps": 85, "安全": 85, "效率工具": 80, "金融": 80,
+    "自动化": 75, "学习教育": 70, "健康健身": 65, "社交": 60, "游戏化": 60,
+    "创意工具": 65, "音乐": 55, "美食": 50, "天气环境": 55, "宠物": 45,
+}
+
+# Twist 趣味性评分
+TWIST_FUN_SCORES = {
+    "用 AI 来增强核心体验": 90,
+    "加入 gamification 元素": 80,
+    "加上 WebSocket 实时通信": 75,
+    "支持插件/扩展系统": 75,
+    "加上实时协作功能": 80,
+    "做一个极简风格的版本": 65,
+    "支持 Docker 一键部署": 70,
+    "做成开源项目": 70,
+    "用 TUI 而不是 GUI": 75,
+    "支持多语言国际化": 65,
+    "加上暗黑模式（必须的）": 55,
+    "但要支持离线使用": 70,
+    "而且要完全用 CLI 完成": 60,
+    "做一个 mobile-first 的版本": 60,
+    "加上完善的测试覆盖": 65,
+}
+
+
+def _seeded_random(idea, salt=""):
+    """基于创意内容生成确定性随机数（0-100），确保相同创意得分稳定"""
+    key = f"{idea['tech']['name']}|{idea['project']['name']}|{idea['theme']['name']}|{idea['twist']}|{salt}"
+    h = hashlib.md5(key.encode()).hexdigest()
+    return int(h[:4], 16) % 101  # 0-100
+
+
+def score_idea(idea):
+    """为一个创意打分，返回各维度分数和总分"""
+    tech_name = idea["tech"]["name"]
+    proj_name = idea["project"]["name"]
+    theme_name = idea["theme"]["name"]
+    diff_stars = idea["difficulty"]["stars"]
+    twist = idea["twist"]
+
+    # 创新度：技术栈创新 + 一点随机波动
+    innovation_base = TECH_INNOVATION.get(tech_name, 50)
+    innovation_noise = _seeded_random(idea, "innov") % 21 - 10  # -10 ~ +10
+    innovation = max(10, min(100, innovation_base + innovation_noise))
+
+    # 实用性：项目类型实用性 + 主题潜力
+    practical_base = PROJECT_PRACTICALITY.get(proj_name, 50)
+    theme_base = THEME_POTENTIAL.get(theme_name, 50)
+    practical_noise = _seeded_random(idea, "pract") % 11 - 5
+    practicality = max(10, min(100, int((practical_base * 0.6 + theme_base * 0.4) + practical_noise)))
+
+    # 挑战度：难度星星 * 20 + twist 难度加成
+    diff_score = diff_stars * 20
+    twist_bonus = TWIST_FUN_SCORES.get(twist, 50) // 5  # 0-18
+    challenge_noise = _seeded_random(idea, "chall") % 11 - 5
+    challenge = max(10, min(100, diff_score + twist_bonus + challenge_noise))
+
+    # 趣味性：主题 + twist 组合
+    theme_fun = THEME_POTENTIAL.get(theme_name, 50)
+    twist_fun = TWIST_FUN_SCORES.get(twist, 50)
+    fun_noise = _seeded_random(idea, "fun") % 11 - 5
+    fun = max(10, min(100, int((theme_fun * 0.4 + twist_fun * 0.6) + fun_noise)))
+
+    # 综合得分（加权平均）
+    total = int(innovation * 0.25 + practicality * 0.30 + challenge * 0.20 + fun * 0.25)
+
+    return {
+        "innovation": innovation,
+        "practicality": practicality,
+        "challenge": challenge,
+        "fun": fun,
+        "total": total,
+        "grade": _score_to_grade(total),
+    }
+
+
+def _score_to_grade(score):
+    """将分数转为等级"""
+    if score >= 90:
+        return "S"
+    elif score >= 80:
+        return "A"
+    elif score >= 70:
+        return "B"
+    elif score >= 60:
+        return "C"
+    elif score >= 50:
+        return "D"
+    else:
+        return "E"
+
+
+def _score_bar(value, width=15):
+    """生成分数条"""
+    filled = int(width * value / 100)
+    return "█" * filled + "░" * (width - filled)
+
+
+def format_score(score_data):
+    """格式化评分（支持 Rich）"""
+    if RICH_AVAILABLE:
+        table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1), expand=False)
+        table.add_column("维度", style="bold cyan", no_wrap=True, width=10)
+        table.add_column("分数", justify="right", width=4)
+        table.add_column("分布", width=18)
+
+        dims = [
+            ("💡 创新度", score_data["innovation"], "bright_yellow"),
+            ("🎯 实用性", score_data["practicality"], "bright_green"),
+            ("🔥 挑战度", score_data["challenge"], "bright_red"),
+            ("🎮 趣味性", score_data["fun"], "bright_magenta"),
+        ]
+
+        for label, val, color in dims:
+            bar = _score_bar(val)
+            table.add_row(label, f"[bold]{val}[/bold]", f"[{color}]{bar}[/{color}]")
+
+        # 总分
+        grade = score_data["grade"]
+        grade_colors = {"S": "bright_yellow", "A": "bright_green", "B": "cyan", "C": "yellow", "D": "red", "E": "dim red"}
+        grade_color = grade_colors.get(grade, "white")
+        total_bar = _score_bar(score_data["total"])
+        table.add_row("⭐ 综合", f"[bold bright_white]{score_data['total']}[/bold bright_white]",
+                       f"[bright_blue]{total_bar}[/bright_blue]")
+        table.add_row("🏆 评级", f"[bold {grade_color}]{grade}[/bold {grade_color}]", "")
+
+        return Panel(table, title="📊 项目评分", border_style="bright_cyan", expand=False, padding=(0, 1))
+    else:
+        lines = []
+        lines.append("  ┌─────────────────────────────────────┐")
+        lines.append("  │          📊 项目评分                 │")
+        lines.append("  ├─────────────────────────────────────┤")
+        dims = [
+            ("💡 创新度", score_data["innovation"]),
+            ("🎯 实用性", score_data["practicality"]),
+            ("🔥 挑战度", score_data["challenge"]),
+            ("🎮 趣味性", score_data["fun"]),
+        ]
+        for label, val in dims:
+            bar = _score_bar(val, 12)
+            lines.append(f"  │  {label}  {bar} {val:>3}  │")
+        lines.append("  ├─────────────────────────────────────┤")
+        lines.append(f"  │  ⭐ 综合   {_score_bar(score_data['total'], 12)} {score_data['total']:>3}  │")
+        lines.append(f"  │  🏆 评级   {score_data['grade']:<28}│")
+        lines.append("  └─────────────────────────────────────┘")
+        return "\n".join(lines)
+
 
 # ═══════════════════════════════════════════
 # 项目骨架模板
@@ -1020,6 +1194,7 @@ def main():
                        help="导出为文件 (json/csv/md, 默认 json)")
     parser.add_argument("--export-file", type=str, default=None,
                        help="指定导出文件名 (配合 --export 使用)")
+    parser.add_argument("--score", action="store_true", help="显示项目评分 (创新/实用/挑战/趣味)")
     args = parser.parse_args()
 
     if args.history:
@@ -1043,6 +1218,9 @@ def main():
         if args.scaffold:
             header_parts.append("\n")
             header_parts.append(Text("🏗️  骨架生成模式已启用", style="bright_magenta"))
+        if args.score:
+            header_parts.append("\n")
+            header_parts.append(Text("📊 项目评分模式已启用", style="bright_cyan"))
         
         from rich.console import Group
         header_group = Group(*header_parts)
@@ -1082,12 +1260,26 @@ def main():
             result = format_ai_idea(idea, ai_desc) if ai_desc else format_idea(idea)
             if result:
                 print(result)
-            save_to_history(idea, ai_desc)
+            idea_score = score_idea(idea) if args.score else None
+            if idea_score:
+                score_output = format_score(idea_score)
+                if RICH_AVAILABLE:
+                    console.print(score_output)
+                else:
+                    print(score_output)
+            save_to_history(idea, ai_desc, idea_score)
         else:
             result = format_idea(idea)
             if result:
                 print(result)
-            save_to_history(idea)
+            idea_score = score_idea(idea) if args.score else None
+            if idea_score:
+                score_output = format_score(idea_score)
+                if RICH_AVAILABLE:
+                    console.print(score_output)
+                else:
+                    print(score_output)
+            save_to_history(idea, score=idea_score)
     else:
         for i in range(args.count):
             idea = generate_idea(hard_mode=args.hard, tech_filter=args.tech)
@@ -1106,12 +1298,26 @@ def main():
                     result = format_idea(idea, index=i+1 if args.count > 1 else None)
                 if result:
                     print(result)
-                save_to_history(idea, ai_desc)
+                idea_score = score_idea(idea) if args.score else None
+                if idea_score:
+                    score_output = format_score(idea_score)
+                    if RICH_AVAILABLE:
+                        console.print(score_output)
+                    else:
+                        print(score_output)
+                save_to_history(idea, ai_desc, idea_score)
             else:
                 result = format_idea(idea, index=i+1 if args.count > 1 else None)
                 if result:
                     print(result)
-                save_to_history(idea)
+                idea_score = score_idea(idea) if args.score else None
+                if idea_score:
+                    score_output = format_score(idea_score)
+                    if RICH_AVAILABLE:
+                        console.print(score_output)
+                    else:
+                        print(score_output)
+                save_to_history(idea, score=idea_score)
             
             print()
     
