@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-🎲 Random Project Generator v3.6
+🎲 Random Project Generator v3.7
 随机组合技术栈 + 项目类型 + 领域，帮你找灵感！
 ✨ 终端美化：自动检测 Rich 库，提供彩色输出和精美面板
+🧩 插件系统：支持自定义技术栈、项目类型、主题和创意转折
 
 Usage:
     python3 gen.py                    # 基础模式
@@ -43,6 +44,12 @@ Usage:
     python3 gen.py --api-doc --ai        # AI 描述 + API 文档组合
     python3 gen.py --recommend           # 基于历史偏好推荐 5 个项目
     python3 gen.py --recommend 10        # 推荐 10 个项目
+    python3 gen.py --plugin-show         # 查看自定义插件
+    python3 gen.py --plugin-add tech "Django" "🐍" "backend,web"  # 添加自定义技术栈
+    python3 gen.py --plugin-add theme "区块链" "⛓️" "Web3/DeFi"  # 添加自定义主题
+    python3 gen.py --plugin-add twist "支持语音交互" "_" "_"     # 添加自定义转折
+    python3 gen.py --plugin-remove tech "Django"   # 移除自定义技术栈
+    python3 gen.py --plugin-reset                  # 清空所有自定义插件
 """
 
 import random
@@ -76,6 +83,7 @@ except ImportError:
     console = None
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".gen_history.json")
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".gen_config.json")
+PLUGINS_FILE = os.path.join(os.path.expanduser("~"), ".gen_plugins.json")
 
 # 全局动画开关覆盖（命令行 --no-animation 使用，不持久化）
 _ANIMATION_OVERRIDE = None  # None = 使用配置, True/False = 强制覆盖
@@ -360,6 +368,261 @@ def apply_config_defaults(args):
     if not args.tech and cfg.get("preferred_tech"):
         args.tech = ",".join(cfg["preferred_tech"])
     return args
+
+
+# ═══════════════════════════════════════════
+# 插件系统（用户自定义技术栈/项目类型/主题/转折）
+# ═══════════════════════════════════════════
+
+PLUGIN_CATEGORIES = {
+    "tech": {
+        "label": "技术栈",
+        "list_key": "tech_stacks",
+        "fields": ["name", "emoji", "tags"],
+        "example": 'tech "Django" "🐍" "backend,web,mvc"',
+        "desc": "技术栈名称",
+    },
+    "project": {
+        "label": "项目类型",
+        "list_key": "project_types",
+        "fields": ["name", "emoji", "desc"],
+        "example": 'project "PWA 应用" "📲" "渐进式 Web 应用"',
+        "desc": "项目类型名称",
+    },
+    "theme": {
+        "label": "主题领域",
+        "list_key": "themes",
+        "fields": ["name", "emoji", "desc"],
+        "example": 'theme "区块链" "⛓️" "Web3/DeFi/NFT"',
+        "desc": "主题名称",
+    },
+    "twist": {
+        "label": "创意转折",
+        "list_key": "twists",
+        "fields": ["text"],
+        "example": 'twist "支持语音交互"',
+        "desc": "转折描述",
+    },
+}
+
+
+def load_plugins():
+    """加载用户插件配置"""
+    if not os.path.exists(PLUGINS_FILE):
+        return {"tech_stacks": [], "project_types": [], "themes": [], "twists": []}
+    try:
+        with open(PLUGINS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # 确保所有键都存在
+        for key in ("tech_stacks", "project_types", "themes", "twists"):
+            if key not in data:
+                data[key] = []
+        return data
+    except (json.JSONDecodeError, IOError):
+        return {"tech_stacks": [], "project_types": [], "themes": [], "twists": []}
+
+
+def save_plugins(data):
+    """保存插件配置"""
+    with open(PLUGINS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def add_plugin(category, name, emoji="", extra=""):
+    """添加一个自定义条目
+
+    Args:
+        category: 类别 (tech/project/theme/twist)
+        name: 名称
+        emoji: emoji 图标
+        extra: 额外信息 (tags 或 desc)
+
+    Returns:
+        (success, message)
+    """
+    if category not in PLUGIN_CATEGORIES:
+        return False, f"未知类别: {category} (支持: {', '.join(PLUGIN_CATEGORIES.keys())})"
+
+    info = PLUGIN_CATEGORIES[category]
+    plugins = load_plugins()
+    items = plugins[info["list_key"]]
+
+    # 检查重名（自定义插件）
+    if category == "twist":
+        if any(t == name for t in items):
+            return False, f"已存在相同的转折: {name}"
+    else:
+        if any(t.get("name") == name for t in items):
+            return False, f"已存在同名自定义{info['label']}: {name}"
+
+    # 检查与内置项冲突
+    if category == "tech":
+        if any(t["name"] == name for t in TECH_STACKS):
+            return False, f"内置技术栈中已存在: {name}（无需重复添加）"
+    elif category == "project":
+        if any(p["name"] == name for p in PROJECT_TYPES):
+            return False, f"内置项目类型中已存在: {name}（无需重复添加）"
+    elif category == "theme":
+        if any(t["name"] == name for t in THEMES):
+            return False, f"内置主题中已存在: {name}（无需重复添加）"
+    elif category == "twist":
+        if name in TWISTS:
+            return False, f"内置转折中已存在: {name}（无需重复添加）"
+
+    # 构建条目
+    if category == "twist":
+        items.append(name)
+    elif category == "tech":
+        tags = [t.strip() for t in extra.split(",") if t.strip()] if extra else []
+        items.append({"name": name, "emoji": emoji or "🔧", "tags": tags})
+    else:
+        items.append({"name": name, "emoji": emoji or "📦", "desc": extra or ""})
+
+    save_plugins(plugins)
+    return True, f"✅ 已添加自定义{info['label']}: {emoji} {name}"
+
+
+def remove_plugin(category, name):
+    """移除一个自定义条目
+
+    Returns:
+        (success, message)
+    """
+    if category not in PLUGIN_CATEGORIES:
+        return False, f"未知类别: {category}"
+
+    info = PLUGIN_CATEGORIES[category]
+    plugins = load_plugins()
+    items = plugins[info["list_key"]]
+
+    if category == "twist":
+        if name not in items:
+            return False, f"未找到转折: {name}"
+        items.remove(name)
+    else:
+        found = False
+        for i, item in enumerate(items):
+            if item.get("name") == name:
+                items.pop(i)
+                found = True
+                break
+        if not found:
+            return False, f"未找到{info['label']}: {name}"
+
+    save_plugins(plugins)
+    return True, f"✅ 已移除自定义{info['label']}: {name}"
+
+
+def print_plugins():
+    """显示当前插件配置"""
+    plugins = load_plugins()
+    total = sum(len(v) for v in plugins.values())
+
+    if RICH_AVAILABLE:
+        if total == 0:
+            console.print(Panel(
+                "[italic]暂无自定义插件。[/italic]\n\n"
+                "使用方式:\n"
+                '  [cyan]python3 gen.py --plugin-add tech "Django" "🐍" "backend,web"[/cyan]\n'
+                '  [cyan]python3 gen.py --plugin-add theme "区块链" "⛓️" "Web3/DeFi"[/cyan]\n'
+                '  [cyan]python3 gen.py --plugin-add twist "支持语音交互"[/cyan]\n\n'
+                f"[dim]插件文件: {PLUGINS_FILE}[/dim]",
+                title="🧩 自定义插件", border_style="bright_magenta"))
+            return
+
+        console.print()
+        for cat_key, info in PLUGIN_CATEGORIES.items():
+            items = plugins[info["list_key"]]
+            if not items:
+                continue
+
+            table = Table(
+                title=f"🧩 自定义{info['label']} ({len(items)}个)",
+                box=box.ROUNDED, border_style="bright_magenta",
+                show_lines=False, expand=False)
+            table.add_column("#", style="dim", width=3, justify="right")
+
+            if cat_key == "twist":
+                table.add_column("描述", style="bright_white", width=40)
+                for i, text in enumerate(items, 1):
+                    table.add_row(str(i), text)
+            elif cat_key == "tech":
+                table.add_column("", width=3)
+                table.add_column("名称", style="bold cyan", width=14)
+                table.add_column("标签", style="dim", width=25)
+                for i, item in enumerate(items, 1):
+                    table.add_row(str(i), item.get("emoji", ""), item["name"],
+                                  ", ".join(item.get("tags", [])))
+            else:
+                table.add_column("", width=3)
+                table.add_column("名称", style="bold cyan", width=14)
+                table.add_column("描述", style="white", width=25)
+                for i, item in enumerate(items, 1):
+                    table.add_row(str(i), item.get("emoji", ""), item["name"],
+                                  item.get("desc", ""))
+
+            console.print(table)
+
+        console.print(f"\n  [dim]插件文件: {PLUGINS_FILE}[/dim]")
+        console.print(f"  [dim]移除: python3 gen.py --plugin-remove <类别> <名称>[/dim]\n")
+    else:
+        print()
+        if total == 0:
+            print("  🧩 暂无自定义插件")
+            print()
+            print("  使用方式:")
+            print('    python3 gen.py --plugin-add tech "Django" "🐍" "backend,web"')
+            print('    python3 gen.py --plugin-add theme "区块链" "⛓️" "Web3/DeFi"')
+            print('    python3 gen.py --plugin-add twist "支持语音交互"')
+            print(f"\n  插件文件: {PLUGINS_FILE}")
+            return
+
+        for cat_key, info in PLUGIN_CATEGORIES.items():
+            items = plugins[info["list_key"]]
+            if not items:
+                continue
+            print(f"  🧩 自定义{info['label']} ({len(items)}个)")
+            print(f"  {'─' * 40}")
+            if cat_key == "twist":
+                for i, text in enumerate(items, 1):
+                    print(f"    {i}. {text}")
+            else:
+                for i, item in enumerate(items, 1):
+                    emoji = item.get("emoji", "")
+                    name = item.get("name", "")
+                    extra = ", ".join(item.get("tags", [])) if cat_key == "tech" else item.get("desc", "")
+                    print(f"    {i}. {emoji} {name}  ({extra})")
+            print()
+
+        print(f"  插件文件: {PLUGINS_FILE}")
+        print(f"  移除: python3 gen.py --plugin-remove <类别> <名称>")
+        print()
+
+
+def apply_plugins():
+    """将用户插件合并到全局数据列表中（在数据定义之后调用）"""
+    global TECH_STACKS, PROJECT_TYPES, THEMES, TWISTS
+    plugins = load_plugins()
+
+    # 去重合并（用户插件不覆盖内置项）
+    existing_techs = {t["name"] for t in TECH_STACKS}
+    for item in plugins.get("tech_stacks", []):
+        if item.get("name") not in existing_techs:
+            TECH_STACKS.append(item)
+
+    existing_projects = {p["name"] for p in PROJECT_TYPES}
+    for item in plugins.get("project_types", []):
+        if item.get("name") not in existing_projects:
+            PROJECT_TYPES.append(item)
+
+    existing_themes = {t["name"] for t in THEMES}
+    for item in plugins.get("themes", []):
+        if item.get("name") not in existing_themes:
+            THEMES.append(item)
+
+    for text in plugins.get("twists", []):
+        if text not in TWISTS:
+            TWISTS.append(text)
 
 
 # ═══════════════════════════════════════════
@@ -949,6 +1212,9 @@ TWISTS = [
     "做一个 mobile-first 的版本",
     "加上完善的测试覆盖",
 ]
+
+# 合并用户自定义插件
+apply_plugins()
 
 # ═══════════════════════════════════════════
 # 依赖推荐库
@@ -3927,6 +4193,15 @@ def main():
     parser.add_argument("--recommend", type=int, nargs="?", const=5, default=None,
                        metavar="N",
                        help="基于历史偏好推荐项目 (默认推荐 5 个)")
+    # 插件管理
+    parser.add_argument("--plugin-show", action="store_true",
+                       help="显示当前自定义插件")
+    parser.add_argument("--plugin-add", nargs=4, metavar=("CATEGORY", "NAME", "EMOJI", "EXTRA"),
+                       help="添加自定义条目 (类别: tech/project/theme/twist)")
+    parser.add_argument("--plugin-remove", nargs=2, metavar=("CATEGORY", "NAME"),
+                       help="移除自定义条目")
+    parser.add_argument("--plugin-reset", action="store_true",
+                       help="清空所有自定义插件")
     args = parser.parse_args()
 
     # ── 补全脚本生成（优先处理，不生成创意）──
@@ -3953,6 +4228,34 @@ def main():
             console.print("  [bold green]✅ 配置已重置为默认值[/bold green]")
         else:
             print("  ✅ 配置已重置为默认值")
+        return
+
+    # ── 插件管理命令（优先处理，不生成创意）──
+    if args.plugin_show:
+        print_plugins()
+        return
+    if args.plugin_add:
+        category, name, emoji, extra = args.plugin_add
+        ok, msg = add_plugin(category, name, emoji, extra)
+        if RICH_AVAILABLE:
+            console.print(f"  [bold {'green' if ok else 'red'}]{msg}[/bold {'green' if ok else 'red'}]")
+        else:
+            print(f"  {msg}")
+        return
+    if args.plugin_remove:
+        category, name = args.plugin_remove
+        ok, msg = remove_plugin(category, name)
+        if RICH_AVAILABLE:
+            console.print(f"  [bold {'green' if ok else 'red'}]{msg}[/bold {'green' if ok else 'red'}]")
+        else:
+            print(f"  {msg}")
+        return
+    if args.plugin_reset:
+        save_plugins({"tech_stacks": [], "project_types": [], "themes": [], "twists": []})
+        if RICH_AVAILABLE:
+            console.print("  [bold green]✅ 所有自定义插件已清空[/bold green]")
+        else:
+            print("  ✅ 所有自定义插件已清空")
         return
 
     # 应用配置文件默认值到未指定的参数
