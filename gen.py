@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🎲 Random Project Generator v3.1
+🎲 Random Project Generator v3.2
 随机组合技术栈 + 项目类型 + 领域，帮你找灵感！
 ✨ 终端美化：自动检测 Rich 库，提供彩色输出和精美面板
 
@@ -23,6 +23,11 @@ Usage:
     python3 gen.py -n 3 --score --ai   # AI + 评分组合
     python3 gen.py --deps              # 显示推荐依赖库
     python3 gen.py --deps --score      # 依赖推荐 + 评分组合
+    python3 gen.py --config-show       # 查看当前配置
+    python3 gen.py --config-set count 3   # 设置默认生成数量为 3
+    python3 gen.py --config-set ai true   # 默认开启 AI 描述
+    python3 gen.py --config-set preferred_tech python,rust  # 设置偏好技术栈
+    python3 gen.py --config-reset      # 重置为默认配置
 """
 
 import random
@@ -52,6 +57,166 @@ except ImportError:
     RICH_AVAILABLE = False
     console = None
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".gen_history.json")
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".gen_config.json")
+
+# 默认配置
+DEFAULT_CONFIG = {
+    "count": 1,
+    "hard": False,
+    "ai": False,
+    "score": False,
+    "deps": False,
+    "scaffold": False,
+    "export_format": None,
+    "preferred_tech": [],
+    "theme": "auto",  # auto / dark / light (预留)
+}
+
+# ═══════════════════════════════════════════
+# 配置文件管理
+# ═══════════════════════════════════════════
+
+def load_config():
+    """加载用户配置，不存在则返回默认配置"""
+    if not os.path.exists(CONFIG_FILE):
+        return dict(DEFAULT_CONFIG)
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            user_cfg = json.load(f)
+        # 合并：用户配置覆盖默认值，但忽略未知键
+        cfg = dict(DEFAULT_CONFIG)
+        for key in DEFAULT_CONFIG:
+            if key in user_cfg:
+                cfg[key] = user_cfg[key]
+        return cfg
+    except (json.JSONDecodeError, IOError):
+        return dict(DEFAULT_CONFIG)
+
+
+def save_config(cfg):
+    """保存配置到文件"""
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+def set_config_value(key, value):
+    """设置单个配置项"""
+    if key not in DEFAULT_CONFIG:
+        return False, f"未知配置项: {key}"
+    cfg = load_config()
+    # 类型校验
+    expected = DEFAULT_CONFIG[key]
+    if isinstance(expected, bool):
+        value = str(value).lower() in ("true", "1", "yes", "on")
+    elif isinstance(expected, int):
+        try:
+            value = int(value)
+        except ValueError:
+            return False, f"{key} 需要整数值"
+    elif key == "preferred_tech":
+        # 逗号分隔列表
+        value = [t.strip() for t in str(value).split(",") if t.strip()]
+    elif key == "export_format":
+        if value and value not in ("json", "csv", "md", "markdown"):
+            return False, f"不支持的导出格式: {value} (支持: json, csv, md)"
+        value = value if value else None
+
+    cfg[key] = value
+    save_config(cfg)
+    return True, f"✅ {key} = {value!r}"
+
+
+def reset_config():
+    """重置为默认配置"""
+    save_config(dict(DEFAULT_CONFIG))
+
+
+def print_config():
+    """打印当前配置"""
+    cfg = load_config()
+    is_default = not os.path.exists(CONFIG_FILE)
+
+    if RICH_AVAILABLE:
+        table = Table(title="⚙️  当前配置", box=box.ROUNDED,
+                      border_style="bright_blue", show_lines=False, expand=False)
+        table.add_column("配置项", style="bold cyan", width=18)
+        table.add_column("当前值", style="bright_white", width=20)
+        table.add_column("默认值", style="dim", width=20)
+        table.add_column("说明", style="white", width=28)
+
+        descriptions = {
+            "count": "默认生成数量",
+            "hard": "默认开启高难度模式",
+            "ai": "默认开启 AI 描述",
+            "score": "默认显示项目评分",
+            "deps": "默认显示依赖推荐",
+            "scaffold": "默认生成项目骨架",
+            "export_format": "默认导出格式",
+            "preferred_tech": "偏好技术栈",
+            "theme": "界面主题 (预留)",
+        }
+        for key in DEFAULT_CONFIG:
+            cur = cfg[key]
+            def_val = DEFAULT_CONFIG[key]
+            changed = "🔴" if cur != def_val else "🟢"
+            desc = descriptions.get(key, "")
+            table.add_row(
+                f"{changed} {key}",
+                str(cur),
+                str(def_val),
+                desc,
+            )
+
+        console.print()
+        console.print(table)
+        if is_default:
+            console.print("  [dim]📂 配置文件尚未创建，使用默认值。使用 --config-set 设置偏好。[/dim]")
+        else:
+            console.print(f"  [dim]📂 配置文件: {CONFIG_FILE}[/dim]")
+        console.print()
+    else:
+        print()
+        print("  ╔══════════════════════════════════════╗")
+        print("  ║         ⚙️  当前配置                  ║")
+        print("  ╚══════════════════════════════════════╝")
+        print()
+        for key in DEFAULT_CONFIG:
+            cur = cfg[key]
+            def_val = DEFAULT_CONFIG[key]
+            changed = " 🔴" if cur != def_val else " 🟢"
+            print(f"  {changed} {key:<18} = {cur!r:<16} (默认: {def_val!r})")
+        if is_default:
+            print(f"\n  📂 配置文件尚未创建，使用默认值。")
+        else:
+            print(f"\n  📂 配置文件: {CONFIG_FILE}")
+        print()
+
+
+def apply_config_defaults(args):
+    """将配置文件中的默认值应用到未明确指定的 CLI 参数上。
+    返回修改后的 args 对象。"""
+    cfg = load_config()
+    # 只对用户没在命令行显式指定的参数应用配置默认值
+    # argparse 不提供 easy way 检测"是否显式传入"，所以我们比较默认值
+    if args.count == 1 and cfg["count"] != 1:
+        args.count = cfg["count"]
+    if not args.hard and cfg["hard"]:
+        args.hard = True
+    if not args.ai and cfg["ai"]:
+        args.ai = True
+    if not args.score and cfg["score"]:
+        args.score = True
+    if not args.deps and cfg["deps"]:
+        args.deps = True
+    if not args.scaffold and cfg["scaffold"]:
+        args.scaffold = True
+    if args.export is None and cfg.get("export_format"):
+        args.export = cfg["export_format"]
+    # preferred_tech 仅在 --tech 未指定时使用
+    if not args.tech and cfg.get("preferred_tech"):
+        args.tech = ",".join(cfg["preferred_tech"])
+    return args
+
 
 # ═══════════════════════════════════════════
 # 历史记录
@@ -1426,7 +1591,35 @@ def main():
                        help="指定导出文件名 (配合 --export 使用)")
     parser.add_argument("--score", action="store_true", help="显示项目评分 (创新/实用/挑战/趣味)")
     parser.add_argument("--deps", action="store_true", help="显示推荐依赖库 (根据技术栈+主题智能推荐)")
+    # 配置管理
+    parser.add_argument("--config-show", action="store_true", help="显示当前配置")
+    parser.add_argument("--config-set", nargs=2, metavar=("KEY", "VALUE"),
+                       help="设置配置项 (如: --config-set count 3)")
+    parser.add_argument("--config-reset", action="store_true", help="重置为默认配置")
     args = parser.parse_args()
+
+    # ── 配置管理命令（优先处理，不生成创意）──
+    if args.config_show:
+        print_config()
+        return
+    if args.config_set:
+        key, value = args.config_set
+        ok, msg = set_config_value(key, value)
+        if RICH_AVAILABLE:
+            console.print(f"  [bold {'green' if ok else 'red'}]{msg}[/bold {'green' if ok else 'red'}]")
+        else:
+            print(f"  {msg}")
+        return
+    if args.config_reset:
+        reset_config()
+        if RICH_AVAILABLE:
+            console.print("  [bold green]✅ 配置已重置为默认值[/bold green]")
+        else:
+            print("  ✅ 配置已重置为默认值")
+        return
+
+    # 应用配置文件默认值到未指定的参数
+    args = apply_config_defaults(args)
 
     if args.history:
         print_history()
@@ -1437,7 +1630,7 @@ def main():
     
     if RICH_AVAILABLE:
         # Rich 美化头部
-        title_text = Text("🎲 Random Project Generator v3.1", style="bold bright_white")
+        title_text = Text("🎲 Random Project Generator v3.2", style="bold bright_white")
         subtitle = Text("帮你找到下一个 vibecoding 项目!", style="bright_cyan")
         header_parts = [title_text, "\n", subtitle]
         if args.ai:
@@ -1464,7 +1657,7 @@ def main():
     else:
         print()
         print("  ╔══════════════════════════════════════╗")
-        print("  ║   🎲 Random Project Generator v3.1   ║")
+        print("  ║   🎲 Random Project Generator v3.2   ║")
         print("  ║   帮你找到下一个 vibecoding 项目!     ║")
         if args.ai:
             print("  ║   ✨ AI 增强模式已启用                ║")
