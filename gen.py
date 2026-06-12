@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-🎲 Random Project Generator v3.0
+🎲 Random Project Generator v3.1
 随机组合技术栈 + 项目类型 + 领域，帮你找灵感！
+✨ 终端美化：自动检测 Rich 库，提供彩色输出和精美面板
 
 Usage:
     python3 gen.py                    # 基础模式
@@ -26,9 +27,25 @@ import json
 import csv
 import os
 import sys
+import time
 from datetime import datetime
 from collections import Counter
 
+# ═══════════════════════════════════════════
+# Rich 终端美化 (可选依赖)
+# ═══════════════════════════════════════════
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    from rich.columns import Columns
+    from rich import box
+    RICH_AVAILABLE = True
+    console = Console()
+except ImportError:
+    RICH_AVAILABLE = False
+    console = None
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".gen_history.json")
 
 # ═══════════════════════════════════════════
@@ -67,86 +84,180 @@ def save_to_history(idea, ai_desc=None):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def print_history(limit=20):
-    """打印最近的历史记录"""
+    """打印最近的历史记录（支持 Rich 美化）"""
     history = load_history()
     if not history:
-        print("\n  📜 暂无历史记录，快去生成一些创意吧！\n")
+        if RICH_AVAILABLE:
+            console.print(Panel("[italic]暂无历史记录，快去生成一些创意吧！[/italic]",
+                                title="📜 历史记录", border_style="yellow"))
+        else:
+            print("\n  📜 暂无历史记录，快去生成一些创意吧！\n")
         return
-
-    print()
-    print("  ╔══════════════════════════════════════╗")
-    print("  ║       📜 历史记录 (最近生成)          ║")
-    print("  ╚══════════════════════════════════════╝")
-    print()
 
     recent = history[-limit:][::-1]  # 最新的在前
-    for i, rec in enumerate(recent, 1):
-        ts = rec.get("timestamp", "?")
-        # 只显示日期时间的简短形式
-        try:
-            dt = datetime.fromisoformat(ts)
-            ts_str = dt.strftime("%m-%d %H:%M")
-        except Exception:
-            ts_str = ts[:16]
-        name = rec.get("project_name", "")
-        name_str = f" 📦 {name}" if name else ""
-        print(f"  {i:>3}. [{ts_str}] {rec['tech']} + {rec['project']} + {rec['theme']}{name_str}")
+    
+    if RICH_AVAILABLE:
+        table = Table(title="📜 历史记录 (最近生成)", box=box.ROUNDED,
+                      border_style="bright_yellow", show_lines=False)
+        table.add_column("#", style="dim", width=4, justify="right")
+        table.add_column("时间", style="cyan", width=12)
+        table.add_column("技术栈", style="green", width=10)
+        table.add_column("项目类型", style="yellow", width=12)
+        table.add_column("领域", style="magenta", width=10)
+        table.add_column("项目名", style="bright_white", width=20)
+        
+        for i, rec in enumerate(recent, 1):
+            ts = rec.get("timestamp", "?")
+            try:
+                dt = datetime.fromisoformat(ts)
+                ts_str = dt.strftime("%m-%d %H:%M")
+            except Exception:
+                ts_str = ts[:16]
+            name = rec.get("project_name", "")
+            table.add_row(str(i), ts_str, rec["tech"], rec["project"], rec["theme"], name or "—")
+        
+        console.print()
+        console.print(table)
+        console.print(f"\n  [dim]共 {len(history)} 条记录 (显示最近 {len(recent)} 条)[/dim]\n")
+    else:
+        print()
+        print("  ╔══════════════════════════════════════╗")
+        print("  ║       📜 历史记录 (最近生成)          ║")
+        print("  ╚══════════════════════════════════════╝")
+        print()
 
-    print(f"\n  共 {len(history)} 条记录 (显示最近 {len(recent)} 条)")
-    print()
+        for i, rec in enumerate(recent, 1):
+            ts = rec.get("timestamp", "?")
+            try:
+                dt = datetime.fromisoformat(ts)
+                ts_str = dt.strftime("%m-%d %H:%M")
+            except Exception:
+                ts_str = ts[:16]
+            name = rec.get("project_name", "")
+            name_str = f" 📦 {name}" if name else ""
+            print(f"  {i:>3}. [{ts_str}] {rec['tech']} + {rec['project']} + {rec['theme']}{name_str}")
+
+        print(f"\n  共 {len(history)} 条记录 (显示最近 {len(recent)} 条)")
+        print()
 
 def print_stats():
-    """打印使用统计"""
+    """打印使用统计（支持 Rich 美化）"""
     history = load_history()
     if not history:
-        print("\n  📊 暂无统计数据，快去生成一些创意吧！\n")
+        if RICH_AVAILABLE:
+            console.print(Panel("[italic]暂无统计数据，快去生成一些创意吧！[/italic]",
+                                title="📊 使用统计", border_style="bright_green"))
+        else:
+            print("\n  📊 暂无统计数据，快去生成一些创意吧！\n")
         return
-
-    print()
-    print("  ╔══════════════════════════════════════╗")
-    print("  ║         📊 使用统计                  ║")
-    print("  ╚══════════════════════════════════════╝")
-    print()
 
     tech_counts = Counter(r["tech"] for r in history)
     project_counts = Counter(r["project"] for r in history)
     theme_counts = Counter(r["theme"] for r in history)
     diff_counts = Counter(r["difficulty"] for r in history)
-
-    def print_bar(label, count, total, width=20):
-        filled = int(width * count / total) if total else 0
-        bar = "█" * filled + "░" * (width - filled)
-        pct = count / total * 100 if total else 0
-        print(f"    {label:<12} {bar} {count:>4} ({pct:>5.1f}%)")
-
     total = len(history)
-    print(f"  📈 总计生成 {total} 个创意\n")
-
-    print("  🔧 技术栈 TOP 10:")
-    for name, cnt in tech_counts.most_common(10):
-        print_bar(name, cnt, total)
-
-    print("\n  📁 项目类型 TOP 10:")
-    for name, cnt in project_counts.most_common(10):
-        print_bar(name, cnt, total)
-
-    print("\n  🎨 领域 TOP 10:")
-    for name, cnt in theme_counts.most_common(10):
-        print_bar(name, cnt, total)
-
-    print("\n  ⚡ 难度分布:")
-    for name, cnt in diff_counts.most_common():
-        print_bar(name, cnt, total)
 
     # 显示重复创意
     combos = Counter((r["tech"], r["project"], r["theme"]) for r in history)
     duplicates = [(k, v) for k, v in combos.items() if v > 1]
-    if duplicates:
-        print(f"\n  ⚠️  重复组合 ({len(duplicates)} 组):")
-        for (tech, proj, theme), cnt in sorted(duplicates, key=lambda x: -x[1])[:5]:
-            print(f"    {tech} + {proj} + {theme} × {cnt}")
 
-    print()
+    if RICH_AVAILABLE:
+        from rich.progress_bar import ProgressBar
+        from rich.measure import Measurement
+        
+        console.print()
+        console.print(Panel(f"[bold bright_white]📈 总计生成 {total} 个创意[/bold bright_white]",
+                            title="📊 使用统计", border_style="bright_green", expand=False))
+        
+        def make_stat_table(title, counts, top_n=10, color="cyan"):
+            table = Table(title=title, box=box.SIMPLE_HEAVY, border_style=color, 
+                          show_lines=False, expand=False)
+            table.add_column("", style="dim", width=3, justify="right")
+            table.add_column("名称", style=f"bold {color}", width=14)
+            table.add_column("频率", justify="right", width=6)
+            table.add_column("分布", width=25)
+            table.add_column("%", justify="right", width=7)
+            
+            for rank, (name, cnt) in enumerate(counts.most_common(top_n), 1):
+                pct = cnt / total * 100
+                bar_len = int(20 * cnt / total)
+                bar = "█" * bar_len + "░" * (20 - bar_len)
+                table.add_row(str(rank), name, str(cnt), f"[{color}]{bar}[/{color}]", f"{pct:.1f}%")
+            return table
+        
+        console.print()
+        console.print(make_stat_table("🔧 技术栈 TOP 10", tech_counts, color="green"))
+        console.print()
+        console.print(make_stat_table("📁 项目类型 TOP 10", project_counts, color="yellow"))
+        console.print()
+        console.print(make_stat_table("🎨 领域 TOP 10", theme_counts, color="magenta"))
+        console.print()
+        
+        # 难度分布
+        diff_table = Table(title="⚡ 难度分布", box=box.SIMPLE_HEAVY, border_style="red",
+                           show_lines=False, expand=False)
+        diff_table.add_column("", style="dim", width=3, justify="right")
+        diff_table.add_column("难度", style="bold red", width=14)
+        diff_table.add_column("频率", justify="right", width=6)
+        diff_table.add_column("分布", width=25)
+        diff_table.add_column("%", justify="right", width=7)
+        for rank, (name, cnt) in enumerate(diff_counts.most_common(), 1):
+            pct = cnt / total * 100
+            bar_len = int(20 * cnt / total)
+            bar = "█" * bar_len + "░" * (20 - bar_len)
+            diff_table.add_row(str(rank), name, str(cnt), f"[red]{bar}[/red]", f"{pct:.1f}%")
+        console.print()
+        console.print(diff_table)
+        
+        if duplicates:
+            console.print()
+            dup_table = Table(title=f"⚠️ 重复组合 ({len(duplicates)} 组)", box=box.SIMPLE_HEAVY,
+                              border_style="bright_yellow", show_lines=False, expand=False)
+            dup_table.add_column("技术栈", style="green")
+            dup_table.add_column("项目类型", style="yellow")
+            dup_table.add_column("领域", style="magenta")
+            dup_table.add_column("次数", style="bold red", justify="right")
+            for (tech, proj, theme), cnt in sorted(duplicates, key=lambda x: -x[1])[:5]:
+                dup_table.add_row(tech, proj, theme, str(cnt))
+            console.print(dup_table)
+        
+        console.print()
+    else:
+        def print_bar(label, count, total_val, width=20):
+            filled = int(width * count / total_val) if total_val else 0
+            bar = "█" * filled + "░" * (width - filled)
+            pct = count / total_val * 100 if total_val else 0
+            print(f"    {label:<12} {bar} {count:>4} ({pct:>5.1f}%)")
+
+        print()
+        print("  ╔══════════════════════════════════════╗")
+        print("  ║         📊 使用统计                  ║")
+        print("  ╚══════════════════════════════════════╝")
+        print()
+        print(f"  📈 总计生成 {total} 个创意\n")
+
+        print("  🔧 技术栈 TOP 10:")
+        for name, cnt in tech_counts.most_common(10):
+            print_bar(name, cnt, total)
+
+        print("\n  📁 项目类型 TOP 10:")
+        for name, cnt in project_counts.most_common(10):
+            print_bar(name, cnt, total)
+
+        print("\n  🎨 领域 TOP 10:")
+        for name, cnt in theme_counts.most_common(10):
+            print_bar(name, cnt, total)
+
+        print("\n  ⚡ 难度分布:")
+        for name, cnt in diff_counts.most_common():
+            print_bar(name, cnt, total)
+
+        if duplicates:
+            print(f"\n  ⚠️  重复组合 ({len(duplicates)} 组):")
+            for (tech, proj, theme), cnt in sorted(duplicates, key=lambda x: -x[1])[:5]:
+                print(f"    {tech} + {proj} + {theme} × {cnt}")
+
+        print()
 
 # ═══════════════════════════════════════════
 # 数据库
@@ -469,7 +580,10 @@ def get_ai_description(idea):
         return result
         
     except Exception as e:
-        print(f"  ⚠️  AI 生成失败: {e}")
+        if RICH_AVAILABLE:
+            console.print(f"  [bold yellow]⚠️  AI 生成失败:[/bold yellow] [dim]{e}[/dim]")
+        else:
+            print(f"  ⚠️  AI 生成失败: {e}")
         return None
 
 # ═══════════════════════════════════════════
@@ -527,7 +641,7 @@ def reroll_component(idea, component):
     return idea
 
 def format_idea(idea, index=None):
-    """格式化基础创意"""
+    """格式化基础创意（支持 Rich 美化）"""
     t = idea["tech"]
     p = idea["project"]
     th = idea["theme"]
@@ -535,16 +649,6 @@ def format_idea(idea, index=None):
     w = idea["twist"]
     stars = "⭐" * d["stars"]
     prefix = f"#{index}  " if index else ""
-    
-    lines = [
-        f"  {prefix}{'─' * 40}",
-        f"  {t['emoji']} 技术栈: {t['name']}",
-        f"  {p['emoji']} 项目类型: {p['name']} — {p['desc']}",
-        f"  {th['emoji']} 领域: {th['name']} — {th['desc']}",
-        f"  {d['emoji']} 难度: {d['name']} {stars} (预计 {d['hours']})",
-        f"  ✨ Twist: {w}",
-        f"  {'─' * 40}",
-    ]
     
     name_ideas = [
         f"{t['name']}{th['name']}{p['name'].replace(' ', '')}",
@@ -553,12 +657,41 @@ def format_idea(idea, index=None):
         f"Vibe{th['name']}",
     ]
     suggested_name = random.choice(name_ideas)
-    lines.append(f"  📦 建议项目名: {suggested_name}")
     
-    return "\n".join(lines)
+    if RICH_AVAILABLE:
+        table = Table(show_header=False, box=box.ROUNDED, padding=(0, 1), 
+                      border_style="bright_blue", expand=False)
+        table.add_column("key", style="bold cyan", no_wrap=True)
+        table.add_column("value", style="white")
+        
+        idx_str = f"[bold magenta]{prefix}[/bold magenta]" if prefix else ""
+        table.add_row(f"{t['emoji']} 技术栈", f"[bold green]{t['name']}[/bold green]")
+        table.add_row(f"{p['emoji']} 项目类型", f"[bold yellow]{p['name']}[/bold yellow] — {p['desc']}")
+        table.add_row(f"{th['emoji']} 领域", f"[bold magenta]{th['name']}[/bold magenta] — {th['desc']}")
+        table.add_row(f"{d['emoji']} 难度", f"[bold red]{d['name']}[/bold red] {stars} (预计 {d['hours']})")
+        table.add_row("✨ Twist", f"[italic bright_white]{w}[/italic bright_white]")
+        table.add_row("📦 建议名", f"[bold bright_cyan]{suggested_name}[/bold bright_cyan]")
+        
+        title = f"🎲 创意卡片 {idx_str}" if prefix else "🎲 创意卡片"
+        panel = Panel(table, title=title, border_style="bright_blue", expand=False)
+        console.print()
+        console.print(panel)
+        return ""  # Rich already printed
+    else:
+        lines = [
+            f"  {prefix}{'─' * 40}",
+            f"  {t['emoji']} 技术栈: {t['name']}",
+            f"  {p['emoji']} 项目类型: {p['name']} — {p['desc']}",
+            f"  {th['emoji']} 领域: {th['name']} — {th['desc']}",
+            f"  {d['emoji']} 难度: {d['name']} {stars} (预计 {d['hours']})",
+            f"  ✨ Twist: {w}",
+            f"  {'─' * 40}",
+            f"  📦 建议项目名: {suggested_name}",
+        ]
+        return "\n".join(lines)
 
 def format_ai_idea(idea, ai_desc, index=None):
-    """格式化带 AI 描述的创意"""
+    """格式化带 AI 描述的创意（支持 Rich 美化）"""
     t = idea["tech"]
     p = idea["project"]
     th = idea["theme"]
@@ -567,39 +700,80 @@ def format_ai_idea(idea, ai_desc, index=None):
     stars = "⭐" * d["stars"]
     prefix = f"#{index}  " if index else ""
     
-    lines = []
-    lines.append(f"  {prefix}{'═' * 44}")
-    lines.append(f"  📦 {ai_desc['project_name']}")
-    lines.append(f"  💬 {ai_desc['tagline']}")
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  {t['emoji']} 技术栈: {t['name']}")
-    lines.append(f"  {p['emoji']} 项目类型: {p['name']}")
-    lines.append(f"  {th['emoji']} 领域: {th['name']}")
-    lines.append(f"  {d['emoji']} 难度: {d['name']} {stars} (预计 {d['hours']})")
-    lines.append(f"  ✨ Twist: {w}")
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  📝 项目描述:")
-    
-    desc = ai_desc['description']
-    for i in range(0, len(desc), 40):
-        lines.append(f"     {desc[i:i+40]}")
-    
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  🎯 核心功能:")
-    for feat in ai_desc['features']:
-        lines.append(f"     • {feat}")
-    
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  🔧 技术亮点:")
-    for highlight in ai_desc['tech_highlights']:
-        lines.append(f"     • {highlight}")
-    
-    lines.append(f"  {'─' * 44}")
-    lines.append(f"  🚀 快速开始:")
-    lines.append(f"     {ai_desc['getting_started']}")
-    lines.append(f"  {'═' * 44}")
-    
-    return "\n".join(lines)
+    if RICH_AVAILABLE:
+        # 用 Rich 构建精美面板
+        title_line = f"📦 {ai_desc['project_name']}"
+        if prefix:
+            title_line = f"{prefix}{title_line}"
+        
+        info_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1), expand=True)
+        info_table.add_column("key", style="bold cyan", no_wrap=True)
+        info_table.add_column("value", style="white")
+        info_table.add_row(f"{t['emoji']} 技术栈", f"[bold green]{t['name']}[/bold green]")
+        info_table.add_row(f"{p['emoji']} 项目类型", f"[bold yellow]{p['name']}[/bold yellow]")
+        info_table.add_row(f"{th['emoji']} 领域", f"[bold magenta]{th['name']}[/bold magenta]")
+        info_table.add_row(f"{d['emoji']} 难度", f"[bold red]{d['name']}[/bold red] {stars} (预计 {d['hours']})")
+        info_table.add_row("✨ Twist", f"[italic]{w}[/italic]")
+        
+        # 核心功能
+        features_text = ""
+        for feat in ai_desc['features']:
+            features_text += f"  • {feat}\n"
+        
+        highlights_text = ""
+        for hl in ai_desc['tech_highlights']:
+            highlights_text += f"  • {hl}\n"
+        
+        content_parts = [
+            f"[bold]💬 {ai_desc['tagline']}[/bold]\n",
+            info_table,
+            f"\n[bold bright_white]📝 项目描述:[/bold bright_white]\n  {ai_desc['description']}",
+            f"\n[bold bright_yellow]🎯 核心功能:[/bold bright_yellow]\n{features_text}",
+            f"[bold bright_green]🔧 技术亮点:[/bold bright_green]\n{highlights_text}",
+            f"[bold bright_cyan]🚀 快速开始:[/bold bright_cyan]\n  {ai_desc['getting_started']}",
+        ]
+        
+        from rich.console import Group
+        renderable = Group(*content_parts)
+        panel = Panel(renderable, title=title_line, title_align="left",
+                      border_style="bright_magenta", expand=False, padding=(1, 2))
+        console.print()
+        console.print(panel)
+        return ""  # Rich already printed
+    else:
+        lines = []
+        lines.append(f"  {prefix}{'═' * 44}")
+        lines.append(f"  📦 {ai_desc['project_name']}")
+        lines.append(f"  💬 {ai_desc['tagline']}")
+        lines.append(f"  {'─' * 44}")
+        lines.append(f"  {t['emoji']} 技术栈: {t['name']}")
+        lines.append(f"  {p['emoji']} 项目类型: {p['name']}")
+        lines.append(f"  {th['emoji']} 领域: {th['name']}")
+        lines.append(f"  {d['emoji']} 难度: {d['name']} {stars} (预计 {d['hours']})")
+        lines.append(f"  ✨ Twist: {w}")
+        lines.append(f"  {'─' * 44}")
+        lines.append(f"  📝 项目描述:")
+        
+        desc = ai_desc['description']
+        for i in range(0, len(desc), 40):
+            lines.append(f"     {desc[i:i+40]}")
+        
+        lines.append(f"  {'─' * 44}")
+        lines.append(f"  🎯 核心功能:")
+        for feat in ai_desc['features']:
+            lines.append(f"     • {feat}")
+        
+        lines.append(f"  {'─' * 44}")
+        lines.append(f"  🔧 技术亮点:")
+        for highlight in ai_desc['tech_highlights']:
+            lines.append(f"     • {highlight}")
+        
+        lines.append(f"  {'─' * 44}")
+        lines.append(f"  🚀 快速开始:")
+        lines.append(f"     {ai_desc['getting_started']}")
+        lines.append(f"  {'═' * 44}")
+        
+        return "\n".join(lines)
 
 def save_ideas(ideas, ai_descriptions=None, filename="ideas.md"):
     """保存创意到 markdown 文件"""
@@ -631,7 +805,10 @@ def save_ideas(ideas, ai_descriptions=None, filename="ideas.md"):
                 f.write(f"- **难度**: {d['name']} ({d['hours']})\n")
                 f.write(f"- **Twist**: {w}\n\n")
     
-    print(f"\n  💾 已保存到 {filename}")
+    if RICH_AVAILABLE:
+        console.print(f"\n  [bold bright_green]💾 已保存到 {filename}[/bold bright_green]")
+    else:
+        print(f"\n  💾 已保存到 {filename}")
 
 def export_json(ideas, ai_descriptions=None, filename=None):
     """导出创意为 JSON 格式"""
@@ -669,7 +846,10 @@ def export_json(ideas, ai_descriptions=None, filename=None):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     
-    print(f"\n  💾 已导出 JSON: {filename} ({len(data)} 条)")
+    if RICH_AVAILABLE:
+        console.print(f"\n  [bold bright_green]💾 已导出 JSON:[/bold bright_green] [cyan]{filename}[/cyan] [dim]({len(data)} 条)[/dim]")
+    else:
+        print(f"\n  💾 已导出 JSON: {filename} ({len(data)} 条)")
     return filename
 
 
@@ -710,7 +890,10 @@ def export_csv(ideas, ai_descriptions=None, filename=None):
                 row["ai_features"] = " | ".join(ai.get("features", []))
             writer.writerow(row)
     
-    print(f"\n  💾 已导出 CSV: {filename} ({len(ideas)} 条)")
+    if RICH_AVAILABLE:
+        console.print(f"\n  [bold bright_green]💾 已导出 CSV:[/bold bright_green] [cyan]{filename}[/cyan] [dim]({len(ideas)} 条)[/dim]")
+    else:
+        print(f"\n  💾 已导出 CSV: {filename} ({len(ideas)} 条)")
     return filename
 
 
@@ -764,7 +947,10 @@ def export_markdown(ideas, ai_descriptions=None, filename=None):
             
             f.write("---\n\n")
     
-    print(f"\n  💾 已导出 Markdown: {filename} ({len(ideas)} 条)")
+    if RICH_AVAILABLE:
+        console.print(f"\n  [bold bright_green]💾 已导出 Markdown:[/bold bright_green] [cyan]{filename}[/cyan] [dim]({len(ideas)} 条)[/dim]")
+    else:
+        print(f"\n  💾 已导出 Markdown: {filename} ({len(ideas)} 条)")
     return filename
 
 
@@ -780,7 +966,10 @@ def generate_scaffold(idea, ai_desc=None):
     project_dir = f"projects/{project_slug}"
     
     if os.path.exists(project_dir):
-        print(f"  ⚠️  目录已存在: {project_dir}")
+        if RICH_AVAILABLE:
+            console.print(f"  [bold yellow]⚠️  目录已存在:[/bold yellow] [cyan]{project_dir}[/cyan]")
+        else:
+            print(f"  ⚠️  目录已存在: {project_dir}")
         return project_dir
     
     # 获取模板
@@ -840,18 +1029,39 @@ def main():
         print_stats()
         return
     
-    print()
-    print("  ╔══════════════════════════════════════╗")
-    print("  ║   🎲 Random Project Generator v3.0   ║")
-    print("  ║   帮你找到下一个 vibecoding 项目!     ║")
-    if args.ai:
-        print("  ║   ✨ AI 增强模式已启用                ║")
-    if args.tech:
-        print(f"  ║   🎯 技术栈过滤: {args.tech:<19}║")
-    if args.scaffold:
-        print("  ║   🏗️  骨架生成模式已启用              ║")
-    print("  ╚══════════════════════════════════════╝")
-    print()
+    if RICH_AVAILABLE:
+        # Rich 美化头部
+        title_text = Text("🎲 Random Project Generator v3.1", style="bold bright_white")
+        subtitle = Text("帮你找到下一个 vibecoding 项目!", style="bright_cyan")
+        header_parts = [title_text, "\n", subtitle]
+        if args.ai:
+            header_parts.append("\n")
+            header_parts.append(Text("✨ AI 增强模式已启用", style="bright_yellow"))
+        if args.tech:
+            header_parts.append("\n")
+            header_parts.append(Text(f"🎯 技术栈过滤: {args.tech}", style="bright_green"))
+        if args.scaffold:
+            header_parts.append("\n")
+            header_parts.append(Text("🏗️  骨架生成模式已启用", style="bright_magenta"))
+        
+        from rich.console import Group
+        header_group = Group(*header_parts)
+        console.print()
+        console.print(Panel(header_group, border_style="bright_blue", expand=False, padding=(1, 3)))
+        console.print()
+    else:
+        print()
+        print("  ╔══════════════════════════════════════╗")
+        print("  ║   🎲 Random Project Generator v3.1   ║")
+        print("  ║   帮你找到下一个 vibecoding 项目!     ║")
+        if args.ai:
+            print("  ║   ✨ AI 增强模式已启用                ║")
+        if args.tech:
+            print(f"  ║   🎯 技术栈过滤: {args.tech:<19}║")
+        if args.scaffold:
+            print("  ║   🏗️  骨架生成模式已启用              ║")
+        print("  ╚══════════════════════════════════════╝")
+        print()
     
     ideas = []
     ai_descriptions = []
@@ -863,16 +1073,20 @@ def main():
         ideas.append(idea)
         
         if args.ai:
-            print(f"  🤖 正在生成 AI 描述...")
+            if RICH_AVAILABLE:
+                console.print("  [dim]🤖 正在生成 AI 描述...[/dim]")
+            else:
+                print(f"  🤖 正在生成 AI 描述...")
             ai_desc = get_ai_description(idea)
             ai_descriptions.append(ai_desc)
-            if ai_desc:
-                print(format_ai_idea(idea, ai_desc))
-            else:
-                print(format_idea(idea))
+            result = format_ai_idea(idea, ai_desc) if ai_desc else format_idea(idea)
+            if result:
+                print(result)
             save_to_history(idea, ai_desc)
         else:
-            print(format_idea(idea))
+            result = format_idea(idea)
+            if result:
+                print(result)
             save_to_history(idea)
     else:
         for i in range(args.count):
@@ -880,27 +1094,40 @@ def main():
             ideas.append(idea)
             
             if args.ai:
-                print(f"  🤖 正在为第 {i+1} 个项目生成 AI 描述...")
+                if RICH_AVAILABLE:
+                    console.print(f"  [dim]🤖 正在为第 {i+1} 个项目生成 AI 描述...[/dim]")
+                else:
+                    print(f"  🤖 正在为第 {i+1} 个项目生成 AI 描述...")
                 ai_desc = get_ai_description(idea)
                 ai_descriptions.append(ai_desc)
                 if ai_desc:
-                    print(format_ai_idea(idea, ai_desc, index=i+1 if args.count > 1 else None))
+                    result = format_ai_idea(idea, ai_desc, index=i+1 if args.count > 1 else None)
                 else:
-                    print(format_idea(idea, index=i+1 if args.count > 1 else None))
+                    result = format_idea(idea, index=i+1 if args.count > 1 else None)
+                if result:
+                    print(result)
                 save_to_history(idea, ai_desc)
             else:
-                print(format_idea(idea, index=i+1 if args.count > 1 else None))
+                result = format_idea(idea, index=i+1 if args.count > 1 else None)
+                if result:
+                    print(result)
                 save_to_history(idea)
             
             print()
     
     # 生成骨架
     if args.scaffold:
-        print("  🏗️  正在生成项目骨架...")
+        if RICH_AVAILABLE:
+            console.print("  [bold bright_magenta]🏗️  正在生成项目骨架...[/bold bright_magenta]")
+        else:
+            print("  🏗️  正在生成项目骨架...")
         for i, idea in enumerate(ideas):
             ai_desc = ai_descriptions[i] if i < len(ai_descriptions) and ai_descriptions[i] else None
             project_dir = generate_scaffold(idea, ai_desc)
-            print(f"  ✅ 项目骨架已生成: {project_dir}")
+            if RICH_AVAILABLE:
+                console.print(f"  [bold bright_green]✅ 项目骨架已生成:[/bold bright_green] [cyan]{project_dir}[/cyan]")
+            else:
+                print(f"  ✅ 项目骨架已生成: {project_dir}")
         print()
     
     if args.save:
@@ -917,7 +1144,10 @@ def main():
         elif fmt in ("md", "markdown"):
             export_markdown(ideas, ai_descs, args.export_file)
         else:
-            print(f"\n  ⚠️  不支持的导出格式: {fmt} (支持: json, csv, md)")
+            if RICH_AVAILABLE:
+                console.print(f"\n  [bold red]⚠️  不支持的导出格式:[/bold red] [yellow]{fmt}[/yellow] [dim](支持: json, csv, md)[/dim]")
+            else:
+                print(f"\n  ⚠️  不支持的导出格式: {fmt} (支持: json, csv, md)")
     
     encouragements = [
         "去吧，写点有意思的东西！🚀",
@@ -927,7 +1157,11 @@ def main():
         "代码写起来，咖啡泡起来！☕",
         "今天就从这个开始！🔥",
     ]
-    print(f"  {random.choice(encouragements)}")
+    msg = random.choice(encouragements)
+    if RICH_AVAILABLE:
+        console.print(f"  [bold bright_white]{msg}[/bold bright_white]")
+    else:
+        print(f"  {msg}")
     print()
 
 if __name__ == "__main__":
