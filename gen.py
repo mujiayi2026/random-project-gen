@@ -4,14 +4,17 @@
 随机组合技术栈 + 项目类型 + 领域，帮你找灵感！
 
 Usage:
-    python gen.py              # 生成 1 个项目创意
-    python gen.py -n 5         # 生成 5 个
-    python gen.py --save       # 生成并保存到 ideas.md
-    python gen.py --hard       # 只生成高难度项目
+    python3 gen.py              # 基础模式
+    python3 gen.py --ai         # AI 生成详细描述
+    python3 gen.py -n 3 --ai    # 生成 3 个 + AI 描述
+    python3 gen.py --save       # 保存到 ideas.md
+    python3 gen.py --hard       # 只生成高难度项目
 """
 
 import random
 import argparse
+import json
+import sys
 from datetime import datetime
 
 # ═══════════════════════════════════════════
@@ -95,7 +98,171 @@ TWISTS = [
 ]
 
 # ═══════════════════════════════════════════
-# 生成逻辑
+# AI 生成
+# ═══════════════════════════════════════════
+
+def get_ai_description(idea):
+    """用 AI 生成详细的项目描述"""
+    try:
+        from openai import OpenAI
+        
+        # 使用小米 MiMo API
+        client = OpenAI(
+            api_key="tp-clsya4dpckssktasruy67rtgkok2hgz40ni91gima67amar8",
+            base_url="https://token-plan-cn.xiaomimimo.com/v1"
+        )
+        
+        t = idea["tech"]
+        p = idea["project"]
+        th = idea["theme"]
+        d = idea["difficulty"]
+        w = idea["twist"]
+        
+        # 使用自然语言 prompt，不强制要求 JSON
+        prompt = f"我在做一个{t['name']}项目，类型是{p['name']}，主题是{th['name']}，难度{d['name']}（{d['hours']}），特色是{w}。请给我：1)一个有创意的项目名称 2)一句话介绍 3)4个主要功能 4)2个技术亮点 5)快速开始步骤。简洁回答，用编号列表。"
+
+        response = client.chat.completions.create(
+            model="mimo-v2.5-pro",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.8,
+            max_tokens=400
+        )
+        
+        content = response.choices[0].message.content
+        if not content or content.strip() == "":
+            return None
+        
+        # 手动解析结构化内容
+        result = {
+            "project_name": f"{t['name']}{th['name']}{p['name'].replace(' ', '')}",
+            "tagline": th['desc'],
+            "description": "",
+            "features": [],
+            "tech_highlights": [],
+            "getting_started": ""
+        }
+        
+        lines = content.strip().split("\n")
+        current_section = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # 识别各部分
+            if "项目名称" in line or line.startswith("1"):
+                # 提取名称（去掉编号和标记）
+                name = line.split("：")[-1].split(":")[-1].strip()
+                name = name.replace("**", "").strip()
+                if name:
+                    result["project_name"] = name
+                current_section = "name"
+            elif "一句话" in line or "介绍" in line or line.startswith("2"):
+                tagline = line.split("：")[-1].split(":")[-1].strip()
+                tagline = tagline.replace("**", "").strip()
+                if tagline:
+                    result["tagline"] = tagline
+                current_section = "tagline"
+            elif "功能" in line or line.startswith("3"):
+                current_section = "features"
+                # 检查同一行是否有内容
+                if "：" in line or ":" in line:
+                    feat = line.split("：")[-1].split(":")[-1].strip()
+                    feat = feat.replace("**", "").replace("-", "").strip()
+                    if feat and len(feat) > 3:
+                        result["features"].append(feat)
+            elif "亮点" in line or line.startswith("4"):
+                current_section = "highlights"
+                if "：" in line or ":" in line:
+                    highlight = line.split("：")[-1].split(":")[-1].strip()
+                    highlight = highlight.replace("**", "").replace("-", "").strip()
+                    if highlight and len(highlight) > 3:
+                        result["tech_highlights"].append(highlight)
+            elif "开始" in line or "步骤" in line or line.startswith("5"):
+                current_section = "start"
+                start = line.split("：")[-1].split(":")[-1].strip()
+                start = start.replace("**", "").strip()
+                if start and len(start) > 3:
+                    result["getting_started"] = start
+            elif current_section == "features" and (line.startswith("-") or line.startswith("•") or line.startswith("*")):
+                feat = line.lstrip("-•* ").replace("**", "").strip()
+                if feat and len(feat) > 3:
+                    result["features"].append(feat)
+            elif current_section == "highlights" and (line.startswith("-") or line.startswith("•") or line.startswith("*")):
+                highlight = line.lstrip("-•* ").replace("**", "").strip()
+                if highlight and len(highlight) > 3:
+                    result["tech_highlights"].append(highlight)
+            elif current_section == "start" and not result["getting_started"]:
+                start = line.replace("**", "").strip()
+                if start and len(start) > 5:
+                    result["getting_started"] = start
+        
+        # 确保有足够的功能和亮点
+        if len(result["features"]) < 3:
+            result["features"] = ["核心功能模块", "用户交互界面", "配置管理系统", "数据持久化"]
+        if len(result["tech_highlights"]) < 2:
+            result["tech_highlights"] = ["模块化设计", "跨平台支持"]
+        if not result["getting_started"]:
+            result["getting_started"] = f"pip install依赖, 编辑配置文件, 运行程序"
+        
+        # 生成描述
+        result["description"] = f"一个基于{t['name']}的{p['name']}，专注于{th['name']}领域。{result['tagline']}适合{d['name']}级别的开发者，预计{d['hours']}完成。"
+        
+        return result
+        
+    except Exception as e:
+        print(f"  ⚠️  AI 生成失败: {e}")
+        return None
+
+def format_ai_idea(idea, ai_desc, index=None):
+    """格式化带 AI 描述的创意"""
+    t = idea["tech"]
+    p = idea["project"]
+    th = idea["theme"]
+    d = idea["difficulty"]
+    w = idea["twist"]
+    stars = "⭐" * d["stars"]
+    
+    prefix = f"#{index}  " if index else ""
+    
+    lines = []
+    lines.append(f"  {prefix}{'═' * 44}")
+    lines.append(f"  📦 {ai_desc['project_name']}")
+    lines.append(f"  💬 {ai_desc['tagline']}")
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  {t['emoji']} 技术栈: {t['name']}")
+    lines.append(f"  {p['emoji']} 项目类型: {p['name']}")
+    lines.append(f"  {th['emoji']} 领域: {th['name']}")
+    lines.append(f"  {d['emoji']} 难度: {d['name']} {stars} (预计 {d['hours']})")
+    lines.append(f"  ✨ Twist: {w}")
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  📝 项目描述:")
+    
+    # 自动换行
+    desc = ai_desc['description']
+    for i in range(0, len(desc), 40):
+        lines.append(f"     {desc[i:i+40]}")
+    
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  🎯 核心功能:")
+    for feat in ai_desc['features']:
+        lines.append(f"     • {feat}")
+    
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  🔧 技术亮点:")
+    for highlight in ai_desc['tech_highlights']:
+        lines.append(f"     • {highlight}")
+    
+    lines.append(f"  {'─' * 44}")
+    lines.append(f"  🚀 快速开始:")
+    lines.append(f"     {ai_desc['getting_started']}")
+    lines.append(f"  {'═' * 44}")
+    
+    return "\n".join(lines)
+
+# ═══════════════════════════════════════════
+# 基础模式
 # ═══════════════════════════════════════════
 
 def generate_idea(hard_mode=False):
@@ -105,7 +272,7 @@ def generate_idea(hard_mode=False):
     theme = random.choice(THEMES)
     
     if hard_mode:
-        diff = random.choice(DIFFICULTIES[2:])  # 只选高难度
+        diff = random.choice(DIFFICULTIES[2:])
     else:
         diff = random.choice(DIFFICULTIES)
     
@@ -120,15 +287,13 @@ def generate_idea(hard_mode=False):
     }
 
 def format_idea(idea, index=None):
-    """格式化输出一个创意"""
+    """格式化基础创意"""
     t = idea["tech"]
     p = idea["project"]
     th = idea["theme"]
     d = idea["difficulty"]
     w = idea["twist"]
-    
     stars = "⭐" * d["stars"]
-    
     prefix = f"#{index}  " if index else ""
     
     lines = [
@@ -141,7 +306,6 @@ def format_idea(idea, index=None):
         f"  {'─' * 40}",
     ]
     
-    # 生成项目名称建议
     name_ideas = [
         f"{t['name']}{th['name']}{p['name'].replace(' ', '')}",
         f"{th['name']}Hub",
@@ -153,7 +317,7 @@ def format_idea(idea, index=None):
     
     return "\n".join(lines)
 
-def save_ideas(ideas, filename="ideas.md"):
+def save_ideas(ideas, ai_descriptions=None, filename="ideas.md"):
     """保存创意到 markdown 文件"""
     with open(filename, "a", encoding="utf-8") as f:
         f.write(f"\n## 💡 Ideas — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
@@ -163,12 +327,25 @@ def save_ideas(ideas, filename="ideas.md"):
             th = idea["theme"]
             d = idea["difficulty"]
             w = idea["twist"]
-            f.write(f"### {i}. {t['emoji']} {t['name']} + {p['name']} + {th['name']}\n")
-            f.write(f"- **技术栈**: {t['name']}\n")
-            f.write(f"- **类型**: {p['name']} — {p['desc']}\n")
-            f.write(f"- **领域**: {th['name']} — {th['desc']}\n")
-            f.write(f"- **难度**: {d['name']} ({d['hours']})\n")
-            f.write(f"- **Twist**: {w}\n\n")
+            
+            if ai_descriptions and i-1 < len(ai_descriptions) and ai_descriptions[i-1]:
+                ai = ai_descriptions[i-1]
+                f.write(f"### {i}. 📦 {ai['project_name']}\n")
+                f.write(f"> {ai['tagline']}\n\n")
+                f.write(f"**技术栈**: {t['name']} | **类型**: {p['name']} | **领域**: {th['name']} | **难度**: {d['name']}\n\n")
+                f.write(f"**描述**: {ai['description']}\n\n")
+                f.write(f"**核心功能**:\n")
+                for feat in ai['features']:
+                    f.write(f"- {feat}\n")
+                f.write(f"\n**Twist**: {w}\n\n")
+                f.write(f"---\n\n")
+            else:
+                f.write(f"### {i}. {t['emoji']} {t['name']} + {p['name']} + {th['name']}\n")
+                f.write(f"- **技术栈**: {t['name']}\n")
+                f.write(f"- **类型**: {p['name']} — {p['desc']}\n")
+                f.write(f"- **领域**: {th['name']} — {th['desc']}\n")
+                f.write(f"- **难度**: {d['name']} ({d['hours']})\n")
+                f.write(f"- **Twist**: {w}\n\n")
     
     print(f"\n  💾 已保存到 {filename}")
 
@@ -181,26 +358,42 @@ def main():
     parser.add_argument("-n", "--count", type=int, default=1, help="生成数量 (默认 1)")
     parser.add_argument("--save", action="store_true", help="保存到 ideas.md")
     parser.add_argument("--hard", action="store_true", help="只生成高难度项目")
+    parser.add_argument("--ai", action="store_true", help="用 AI 生成详细描述")
     args = parser.parse_args()
     
     print()
     print("  ╔══════════════════════════════════════╗")
     print("  ║   🎲 Random Project Generator        ║")
     print("  ║   帮你找到下一个 vibecoding 项目!     ║")
+    if args.ai:
+        print("  ║   ✨ AI 增强模式已启用                ║")
     print("  ╚══════════════════════════════════════╝")
     print()
     
     ideas = []
+    ai_descriptions = []
+    
     for i in range(args.count):
         idea = generate_idea(hard_mode=args.hard)
         ideas.append(idea)
-        print(format_idea(idea, index=i+1 if args.count > 1 else None))
+        
+        if args.ai:
+            print(f"  🤖 正在为第 {i+1} 个项目生成 AI 描述...")
+            ai_desc = get_ai_description(idea)
+            ai_descriptions.append(ai_desc)
+            
+            if ai_desc:
+                print(format_ai_idea(idea, ai_desc, index=i+1 if args.count > 1 else None))
+            else:
+                print(format_idea(idea, index=i+1 if args.count > 1 else None))
+        else:
+            print(format_idea(idea, index=i+1 if args.count > 1 else None))
+        
         print()
     
     if args.save:
-        save_ideas(ideas)
+        save_ideas(ideas, ai_descriptions if args.ai else None)
     
-    # 彩蛋：随机鼓励语
     encouragements = [
         "去吧，写点有意思的东西！🚀",
         "别想了，开搞！💻",
