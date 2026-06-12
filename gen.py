@@ -30,6 +30,11 @@ Usage:
     python3 gen.py --config-reset      # 重置为默认配置
     python3 gen.py --no-animation       # 禁用加载动画
     python3 gen.py --config-set animation false  # 禁用加载动画
+    python3 gen.py --deploy             # 显示部署指南 (Docker/云平台)
+    python3 gen.py --deps --deploy      # 依赖推荐 + 部署指南组合
+    python3 gen.py --cicd               # 生成 CI/CD 配置 (GitHub Actions)
+    python3 gen.py --cicd --deploy      # CI/CD + 部署指南组合
+    python3 gen.py --scaffold --cicd    # 骨架 + CI/CD 一步到位
 """
 
 import random
@@ -75,6 +80,7 @@ DEFAULT_CONFIG = {
     "score": False,
     "deps": False,
     "scaffold": False,
+    "deploy": False,
     "export_format": None,
     "preferred_tech": [],
     "theme": "auto",  # auto / dark / light (预留)
@@ -272,6 +278,7 @@ def print_config():
             "score": "默认显示项目评分",
             "deps": "默认显示依赖推荐",
             "scaffold": "默认生成项目骨架",
+            "deploy": "默认显示部署指南",
             "export_format": "默认导出格式",
             "preferred_tech": "偏好技术栈",
             "theme": "界面主题 (预留)",
@@ -337,6 +344,8 @@ def apply_config_defaults(args):
         args.deps = True
     if not args.scaffold and cfg["scaffold"]:
         args.scaffold = True
+    if not args.deploy and cfg["deploy"]:
+        args.deploy = True
     if args.export is None and cfg.get("export_format"):
         args.export = cfg["export_format"]
     # preferred_tech 仅在 --tech 未指定时使用
@@ -866,6 +875,636 @@ def format_dep_recommendations(idea, top_n=6):
             lines.append(f"  {i}. {dep['name']:<16} — {dep['desc']} [{dep['category']}]")
         lines.append(f"  {'─' * 40}")
         return "\n".join(lines)
+
+# ═══════════════════════════════════════════
+# 部署指南
+# ═══════════════════════════════════════════
+
+# 每种技术栈的 Docker 部署模板
+DEPLOY_TEMPLATES = {
+    "Python": {
+        "dockerfile": """FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+CMD ["python", "main.py"]
+""",
+        "compose": """version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - ENV=production
+""",
+        "platforms": ["Heroku", "Railway", "Fly.io", "AWS Lambda"],
+        "steps": [
+            "创建 Dockerfile 和 docker-compose.yml",
+            "构建镜像: docker build -t {project_slug} .",
+            "本地测试: docker-compose up",
+            "推送镜像: docker push registry/{project_slug}",
+            "选择云平台部署 (推荐 Railway 或 Fly.io)",
+        ],
+    },
+    "Node.js": {
+        "dockerfile": """FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+EXPOSE 3000
+CMD ["node", "index.js"]
+""",
+        "compose": """version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=production
+""",
+        "platforms": ["Vercel", "Railway", "Render", "AWS ECS"],
+        "steps": [
+            "创建 Dockerfile 和 docker-compose.yml",
+            "构建镜像: docker build -t {project_slug} .",
+            "本地测试: docker-compose up",
+            "推送镜像: docker push registry/{project_slug}",
+            "选择云平台部署 (推荐 Vercel 或 Railway)",
+        ],
+    },
+    "Rust": {
+        "dockerfile": """FROM rust:1.78 as builder
+
+WORKDIR /app
+COPY . .
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/{project_slug} /usr/local/bin/
+
+EXPOSE 8080
+CMD ["{project_slug}"]
+""",
+        "compose": """version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+""",
+        "platforms": ["Fly.io", "Railway", "AWS ECS", "DigitalOcean"],
+        "steps": [
+            "创建多阶段 Dockerfile (减小镜像体积)",
+            "构建镜像: docker build -t {project_slug} .",
+            "本地测试: docker-compose up",
+            "推送镜像: docker push registry/{project_slug}",
+            "选择云平台部署 (推荐 Fly.io)",
+        ],
+    },
+    "Go": {
+        "dockerfile": """FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+COPY go.* ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o {project_slug} .
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+COPY --from=builder /app/{project_slug} /usr/local/bin/
+
+EXPOSE 8080
+CMD ["{project_slug}"]
+""",
+        "compose": """version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+""",
+        "platforms": ["Fly.io", "Railway", "Google Cloud Run", "AWS Lambda"],
+        "steps": [
+            "创建多阶段 Dockerfile",
+            "构建镜像: docker build -t {project_slug} .",
+            "本地测试: docker-compose up",
+            "推送镜像: docker push registry/{project_slug}",
+            "选择云平台部署 (推荐 Fly.io 或 Google Cloud Run)",
+        ],
+    },
+    "TypeScript": {
+        "dockerfile": """FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+COPY tsconfig.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+EXPOSE 3000
+CMD ["node", "dist/index.js"]
+""",
+        "compose": """version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+""",
+        "platforms": ["Vercel", "Railway", "Render", "Fly.io"],
+        "steps": [
+            "创建 Dockerfile (先编译 TS 再运行)",
+            "构建镜像: docker build -t {project_slug} .",
+            "本地测试: docker-compose up",
+            "推送镜像: docker push registry/{project_slug}",
+            "选择云平台部署 (推荐 Vercel)",
+        ],
+    },
+    "default": {
+        "dockerfile": """FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \\
+    build-essential \\
+    curl \\
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . .
+
+EXPOSE 8080
+CMD ["./run.sh"]
+""",
+        "compose": """version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+""",
+        "platforms": ["Railway", "Fly.io", "DigitalOcean", "AWS"],
+        "steps": [
+            "根据技术栈创建 Dockerfile",
+            "构建镜像: docker build -t {project_slug} .",
+            "本地测试: docker-compose up",
+            "推送镜像: docker push registry/{project_slug}",
+            "选择云平台部署",
+        ],
+    },
+}
+
+
+def format_deploy_guide(idea, ai_desc=None):
+    """格式化部署指南输出（支持 Rich 美化）"""
+    tech_name = idea["tech"]["name"]
+    project_slug = (ai_desc["project_name"] if ai_desc else f"{tech_name}Project").lower().replace(" ", "-")
+
+    template = DEPLOY_TEMPLATES.get(tech_name, DEPLOY_TEMPLATES["default"])
+
+    if RICH_AVAILABLE:
+        dockerfile_content = template["dockerfile"].replace("{project_slug}", project_slug)
+        compose_content = template["compose"].replace("{project_slug}", project_slug)
+
+        from rich.syntax import Syntax
+
+        parts = []
+        parts.append(f"[bold bright_white]🐳 Docker 部署指南 — {tech_name}[/bold bright_white]\n")
+
+        # 部署步骤
+        steps_text = ""
+        for i, step in enumerate(template["steps"], 1):
+            step_fmt = step.replace("{project_slug}", project_slug)
+            steps_text += f"  {i}. {step_fmt}\n"
+        parts.append(f"[bold bright_cyan]📋 部署步骤:[/bold bright_cyan]\n{steps_text}")
+
+        # 推荐平台
+        platforms = " | ".join(f"[bold]{p}[/bold]" for p in template["platforms"])
+        parts.append(f"[bold bright_green]☁️  推荐平台:[/bold bright_green] {platforms}\n")
+
+        # Dockerfile
+        parts.append("[bold bright_yellow]📄 Dockerfile:[/bold bright_yellow]")
+        parts.append(Syntax(dockerfile_content.rstrip(), "docker", theme="monokai", line_numbers=False))
+
+        # docker-compose.yml
+        parts.append("[bold bright_yellow]📄 docker-compose.yml:[/bold bright_yellow]")
+        parts.append(Syntax(compose_content.rstrip(), "yaml", theme="monokai", line_numbers=False))
+
+        from rich.console import Group
+        renderable = Group(*parts)
+        return Panel(renderable, title=f"🚀 部署指南 — {tech_name}",
+                      border_style="bright_blue", expand=False, padding=(1, 2))
+    else:
+        lines = []
+        lines.append(f"  🐳 Docker 部署指南 — {tech_name}")
+        lines.append(f"  {'═' * 44}")
+
+        # 部署步骤
+        lines.append(f"\n  📋 部署步骤:")
+        for i, step in enumerate(template["steps"], 1):
+            step_fmt = step.replace("{project_slug}", project_slug)
+            lines.append(f"    {i}. {step_fmt}")
+
+        # 推荐平台
+        platforms = " | ".join(template["platforms"])
+        lines.append(f"\n  ☁️  推荐平台: {platforms}")
+
+        # Dockerfile
+        dockerfile_content = template["dockerfile"].replace("{project_slug}", project_slug)
+        lines.append(f"\n  📄 Dockerfile:")
+        lines.append(f"  {'─' * 40}")
+        for line in dockerfile_content.strip().split("\n"):
+            lines.append(f"    {line}")
+
+        # docker-compose.yml
+        compose_content = template["compose"].replace("{project_slug}", project_slug)
+        lines.append(f"\n  📄 docker-compose.yml:")
+        lines.append(f"  {'─' * 40}")
+        for line in compose_content.strip().split("\n"):
+            lines.append(f"    {line}")
+
+        lines.append(f"\n  {'═' * 44}")
+        return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════
+# CI/CD 配置模板 (GitHub Actions)
+# ═══════════════════════════════════════════
+
+CICD_TEMPLATES = {
+    "Python": {
+        "filename": ".github/workflows/ci.yml",
+        "content": (
+            "name: CI\n"
+            "\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main, develop]\n"
+            "  pull_request:\n"
+            "    branches: [main]\n"
+            "\n"
+            "jobs:\n"
+            "  test:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    strategy:\n"
+            "      matrix:\n"
+            '        python-version: ["3.10", "3.11", "3.12"]\n'
+            "\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "\n"
+            "      - name: Set up Python ${{{{ matrix.python-version }}}}\n"
+            "        uses: actions/setup-python@v5\n"
+            "        with:\n"
+            "          python-version: ${{{{ matrix.python-version }}}}\n"
+            "\n"
+            "      - name: Install dependencies\n"
+            "        run: |\n"
+            "          python -m pip install --upgrade pip\n"
+            "          pip install -r requirements.txt\n"
+            "          pip install pytest pytest-cov flake8\n"
+            "\n"
+            "      - name: Lint\n"
+            "        run: flake8 . --max-line-length=120 --exclude=venv\n"
+            "\n"
+            "      - name: Test\n"
+            "        run: pytest --cov=. --cov-report=xml\n"
+            "\n"
+            "  deploy:\n"
+            "    needs: test\n"
+            "    runs-on: ubuntu-latest\n"
+            "    if: github.ref == 'refs/heads/main' && github.event_name == 'push'\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - name: Build Docker image\n"
+            "        run: docker build -t {project_slug} .\n"
+        ),
+        "platform": "GitHub Actions",
+        "features": ["多版本 Python 矩阵测试", "Flake8 代码检查", "Pytest 覆盖率报告", "自动 Docker 构建"],
+    },
+    "Node.js": {
+        "filename": ".github/workflows/ci.yml",
+        "content": (
+            "name: CI\n"
+            "\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main, develop]\n"
+            "  pull_request:\n"
+            "    branches: [main]\n"
+            "\n"
+            "jobs:\n"
+            "  test:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    strategy:\n"
+            "      matrix:\n"
+            "        node-version: [18, 20, 22]\n"
+            "\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "\n"
+            "      - name: Use Node.js ${{{{ matrix.node-version }}}}\n"
+            "        uses: actions/setup-node@v4\n"
+            "        with:\n"
+            "          node-version: ${{{{ matrix.node-version }}}}\n"
+            "          cache: npm\n"
+            "\n"
+            "      - name: Install\n"
+            "        run: npm ci\n"
+            "\n"
+            "      - name: Lint\n"
+            "        run: npm run lint --if-present\n"
+            "\n"
+            "      - name: Test\n"
+            "        run: npm test -- --coverage\n"
+            "\n"
+            "  deploy:\n"
+            "    needs: test\n"
+            "    runs-on: ubuntu-latest\n"
+            "    if: github.ref == 'refs/heads/main' && github.event_name == 'push'\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - name: Build Docker image\n"
+            "        run: docker build -t {project_slug} .\n"
+        ),
+        "platform": "GitHub Actions",
+        "features": ["多版本 Node.js 矩阵测试", "npm 缓存加速", "Lint + 测试", "自动 Docker 构建"],
+    },
+    "Rust": {
+        "filename": ".github/workflows/ci.yml",
+        "content": (
+            "name: CI\n"
+            "\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main, develop]\n"
+            "  pull_request:\n"
+            "    branches: [main]\n"
+            "\n"
+            "env:\n"
+            "  CARGO_TERM_COLOR: always\n"
+            "\n"
+            "jobs:\n"
+            "  test:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "\n"
+            "      - name: Install Rust\n"
+            "        uses: dtolnay/rust-toolchain@stable\n"
+            "        with:\n"
+            "          components: rustfmt, clippy\n"
+            "\n"
+            "      - name: Cache cargo\n"
+            "        uses: actions/cache@v4\n"
+            "        with:\n"
+            "          path: |\n"
+            "            ~/.cargo/bin\n"
+            "            ~/.cargo/registry\n"
+            "            target\n"
+            "          key: ${{{{ runner.os }}}}-cargo-${{{{ hashFiles('**/Cargo.lock') }}}}\n"
+            "\n"
+            "      - name: Format check\n"
+            "        run: cargo fmt --check\n"
+            "\n"
+            "      - name: Clippy lint\n"
+            "        run: cargo clippy -- -D warnings\n"
+            "\n"
+            "      - name: Test\n"
+            "        run: cargo test --verbose\n"
+            "\n"
+            "      - name: Build release\n"
+            "        run: cargo build --release\n"
+            "\n"
+            "  deploy:\n"
+            "    needs: test\n"
+            "    runs-on: ubuntu-latest\n"
+            "    if: github.ref == 'refs/heads/main' && github.event_name == 'push'\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - name: Build Docker image\n"
+            "        run: docker build -t {project_slug} .\n"
+        ),
+        "platform": "GitHub Actions",
+        "features": ["Cargo 缓存加速", "Rustfmt 格式检查", "Clippy 静态分析", "Release 构建"],
+    },
+    "Go": {
+        "filename": ".github/workflows/ci.yml",
+        "content": (
+            "name: CI\n"
+            "\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main, develop]\n"
+            "  pull_request:\n"
+            "    branches: [main]\n"
+            "\n"
+            "jobs:\n"
+            "  test:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    strategy:\n"
+            "      matrix:\n"
+            '        go-version: ["1.21", "1.22"]\n'
+            "\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "\n"
+            "      - name: Set up Go ${{{{ matrix.go-version }}}}\n"
+            "        uses: actions/setup-go@v5\n"
+            "        with:\n"
+            "          go-version: ${{{{ matrix.go-version }}}}\n"
+            "\n"
+            "      - name: Vet\n"
+            "        run: go vet ./...\n"
+            "\n"
+            "      - name: Test\n"
+            "        run: go test -v -race -coverprofile=coverage.out ./...\n"
+            "\n"
+            "      - name: Build\n"
+            "        run: go build -v -o {project_slug} .\n"
+            "\n"
+            "  deploy:\n"
+            "    needs: test\n"
+            "    runs-on: ubuntu-latest\n"
+            "    if: github.ref == 'refs/heads/main' && github.event_name == 'push'\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - name: Build Docker image\n"
+            "        run: docker build -t {project_slug} .\n"
+        ),
+        "platform": "GitHub Actions",
+        "features": ["多版本 Go 矩阵测试", "Go Vet 静态检查", "Race detector 竞态检测", "交叉编译构建"],
+    },
+    "TypeScript": {
+        "filename": ".github/workflows/ci.yml",
+        "content": (
+            "name: CI\n"
+            "\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main, develop]\n"
+            "  pull_request:\n"
+            "    branches: [main]\n"
+            "\n"
+            "jobs:\n"
+            "  test:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    strategy:\n"
+            "      matrix:\n"
+            "        node-version: [18, 20, 22]\n"
+            "\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "\n"
+            "      - name: Use Node.js ${{{{ matrix.node-version }}}}\n"
+            "        uses: actions/setup-node@v4\n"
+            "        with:\n"
+            "          node-version: ${{{{ matrix.node-version }}}}\n"
+            "          cache: npm\n"
+            "\n"
+            "      - name: Install\n"
+            "        run: npm ci\n"
+            "\n"
+            "      - name: Type check\n"
+            "        run: npx tsc --noEmit\n"
+            "\n"
+            "      - name: Lint\n"
+            "        run: npm run lint --if-present\n"
+            "\n"
+            "      - name: Test\n"
+            "        run: npm test -- --coverage\n"
+            "\n"
+            "      - name: Build\n"
+            "        run: npm run build\n"
+            "\n"
+            "  deploy:\n"
+            "    needs: test\n"
+            "    runs-on: ubuntu-latest\n"
+            "    if: github.ref == 'refs/heads/main' && github.event_name == 'push'\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - name: Build Docker image\n"
+            "        run: docker build -t {project_slug} .\n"
+        ),
+        "platform": "GitHub Actions",
+        "features": ["TypeScript 类型检查", "多版本 Node.js 矩阵", "ESLint 代码规范", "构建产物验证"],
+    },
+    "default": {
+        "filename": ".github/workflows/ci.yml",
+        "content": (
+            "name: CI\n"
+            "\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main, develop]\n"
+            "  pull_request:\n"
+            "    branches: [main]\n"
+            "\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "\n"
+            "      - name: Build\n"
+            '        run: echo "Add your build commands here"\n'
+            "\n"
+            "      - name: Test\n"
+            '        run: echo "Add your test commands here"\n'
+            "\n"
+            "  deploy:\n"
+            "    needs: build\n"
+            "    runs-on: ubuntu-latest\n"
+            "    if: github.ref == 'refs/heads/main' && github.event_name == 'push'\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - name: Build Docker image\n"
+            "        run: docker build -t {project_slug} .\n"
+        ),
+        "platform": "GitHub Actions",
+        "features": ["自动构建", "自动测试", "main 分支自动部署", "Docker 镜像构建"],
+    },
+}
+
+
+def format_cicd_config(idea, ai_desc=None):
+    """格式化 CI/CD 配置输出（支持 Rich 美化）"""
+    tech_name = idea["tech"]["name"]
+    project_slug = (ai_desc["project_name"] if ai_desc else f"{tech_name}Project").lower().replace(" ", "-")
+
+    template = CICD_TEMPLATES.get(tech_name, CICD_TEMPLATES["default"])
+    content = template["content"].replace("{project_slug}", project_slug)
+
+    if RICH_AVAILABLE:
+        from rich.syntax import Syntax
+
+        parts = []
+        parts.append(f"[bold bright_white]⚙️  CI/CD 配置 — {tech_name}[/bold bright_white]\n")
+
+        # 特性列表
+        features_text = ""
+        for feat in template["features"]:
+            features_text += f"  ✅ {feat}\n"
+        parts.append(f"[bold bright_cyan]🔧 CI 特性:[/bold bright_cyan]\n{features_text}")
+
+        parts.append(f"[bold bright_green]📂 文件路径:[/bold bright_green] [cyan]{template['filename']}[/cyan]")
+        parts.append(f"[bold bright_green]🏗️  CI 平台:[/bold bright_green] [cyan]{template['platform']}[/cyan]\n")
+
+        # 配置文件内容
+        parts.append("[bold bright_yellow]📄 Workflow 配置:[/bold bright_yellow]")
+        parts.append(Syntax(content.rstrip(), "yaml", theme="monokai", line_numbers=False))
+
+        from rich.console import Group
+        renderable = Group(*parts)
+        return Panel(renderable, title=f"⚙️  CI/CD — {tech_name}",
+                      border_style="bright_green", expand=False, padding=(1, 2))
+    else:
+        lines = []
+        lines.append(f"  ⚙️  CI/CD 配置 — {tech_name}")
+        lines.append(f"  {'═' * 44}")
+        lines.append(f"\n  🔧 CI 特性:")
+        for feat in template["features"]:
+            lines.append(f"    ✅ {feat}")
+        lines.append(f"\n  📂 文件路径: {template['filename']}")
+        lines.append(f"  🏗️  CI 平台: {template['platform']}")
+        lines.append(f"\n  📄 Workflow 配置:")
+        lines.append(f"  {'─' * 40}")
+        for line in content.strip().split("\n"):
+            lines.append(f"    {line}")
+        lines.append(f"\n  {'═' * 44}")
+        return "\n".join(lines)
+
 
 # ═══════════════════════════════════════════
 # 项目评分系统
@@ -1723,6 +2362,8 @@ def main():
     parser.add_argument("--config-set", nargs=2, metavar=("KEY", "VALUE"),
                        help="设置配置项 (如: --config-set count 3)")
     parser.add_argument("--config-reset", action="store_true", help="重置为默认配置")
+    parser.add_argument("--deploy", action="store_true", help="显示部署指南 (Docker/云平台)")
+    parser.add_argument("--cicd", action="store_true", help="生成 CI/CD 配置 (GitHub Actions)")
     parser.add_argument("--no-animation", action="store_true", help="禁用加载动画效果")
     args = parser.parse_args()
 
@@ -1776,6 +2417,12 @@ def main():
         if args.deps:
             header_parts.append("\n")
             header_parts.append(Text("🔧 依赖推荐模式已启用", style="bright_green"))
+        if args.deploy:
+            header_parts.append("\n")
+            header_parts.append(Text("🚀 部署指南模式已启用", style="bright_blue"))
+        if args.cicd:
+            header_parts.append("\n")
+            header_parts.append(Text("⚙️  CI/CD 配置模式已启用", style="bright_green"))
         
         from rich.console import Group
         header_group = Group(*header_parts)
@@ -1829,6 +2476,18 @@ def main():
                         console.print(dep_output)
                     else:
                         print(dep_output)
+            if args.deploy:
+                deploy_output = format_deploy_guide(idea, ai_desc if args.ai else None)
+                if RICH_AVAILABLE:
+                    console.print(deploy_output)
+                else:
+                    print(deploy_output)
+            if args.cicd:
+                cicd_output = format_cicd_config(idea, ai_desc if args.ai else None)
+                if RICH_AVAILABLE:
+                    console.print(cicd_output)
+                else:
+                    print(cicd_output)
             save_to_history(idea, ai_desc, idea_score)
         else:
             result = format_idea(idea)
@@ -1848,6 +2507,18 @@ def main():
                         console.print(dep_output)
                     else:
                         print(dep_output)
+            if args.deploy:
+                deploy_output = format_deploy_guide(idea)
+                if RICH_AVAILABLE:
+                    console.print(deploy_output)
+                else:
+                    print(deploy_output)
+            if args.cicd:
+                cicd_output = format_cicd_config(idea)
+                if RICH_AVAILABLE:
+                    console.print(cicd_output)
+                else:
+                    print(cicd_output)
             save_to_history(idea, score=idea_score)
     else:
         for i in range(args.count):
@@ -1882,6 +2553,18 @@ def main():
                             console.print(dep_output)
                         else:
                             print(dep_output)
+                if args.deploy:
+                    deploy_output = format_deploy_guide(idea, ai_desc)
+                    if RICH_AVAILABLE:
+                        console.print(deploy_output)
+                    else:
+                        print(deploy_output)
+                if args.cicd:
+                    cicd_output = format_cicd_config(idea, ai_desc)
+                    if RICH_AVAILABLE:
+                        console.print(cicd_output)
+                    else:
+                        print(cicd_output)
                 save_to_history(idea, ai_desc, idea_score)
             else:
                 result = format_idea(idea, index=i+1 if args.count > 1 else None)
@@ -1901,6 +2584,18 @@ def main():
                             console.print(dep_output)
                         else:
                             print(dep_output)
+                if args.deploy:
+                    deploy_output = format_deploy_guide(idea)
+                    if RICH_AVAILABLE:
+                        console.print(deploy_output)
+                    else:
+                        print(deploy_output)
+                if args.cicd:
+                    cicd_output = format_cicd_config(idea)
+                    if RICH_AVAILABLE:
+                        console.print(cicd_output)
+                    else:
+                        print(cicd_output)
                 save_to_history(idea, score=idea_score)
             
             print()
