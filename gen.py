@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🎲 Random Project Generator v3.5
+🎲 Random Project Generator v3.6
 随机组合技术栈 + 项目类型 + 领域，帮你找灵感！
 ✨ 终端美化：自动检测 Rich 库，提供彩色输出和精美面板
 
@@ -41,6 +41,8 @@ Usage:
     python3 gen.py --scaffold --test-init # 骨架 + 测试框架一步到位
     python3 gen.py --api-doc             # 生成 API 文档模板 (OpenAPI 3.0)
     python3 gen.py --api-doc --ai        # AI 描述 + API 文档组合
+    python3 gen.py --recommend           # 基于历史偏好推荐 5 个项目
+    python3 gen.py --recommend 10        # 推荐 10 个项目
 """
 
 import random
@@ -573,6 +575,300 @@ def print_stats():
                 print(f"    {tech} + {proj} + {theme} × {cnt}")
 
         print()
+
+
+# ═══════════════════════════════════════════
+# 项目组合推荐（基于用户历史偏好）
+# ═══════════════════════════════════════════
+
+def analyze_preferences(history):
+    """分析用户历史偏好，返回偏好数据"""
+    if not history:
+        return None
+
+    tech_counts = Counter(r["tech"] for r in history)
+    project_counts = Counter(r["project"] for r in history)
+    theme_counts = Counter(r["theme"] for r in history)
+    diff_counts = Counter(r["difficulty"] for r in history)
+
+    # 已有组合（用于去重）
+    existing_combos = set((r["tech"], r["project"], r["theme"]) for r in history)
+
+    return {
+        "tech_counts": tech_counts,
+        "project_counts": project_counts,
+        "theme_counts": theme_counts,
+        "diff_counts": diff_counts,
+        "existing_combos": existing_combos,
+        "total": len(history),
+    }
+
+
+def recommend_ideas(prefs, count=5):
+    """基于偏好生成推荐创意
+
+    推荐策略:
+    1. 深度探索 — 最爱技术栈 + 未尝试的领域/项目类型
+    2. 跨界发现 — 最爱领域 + 较少使用的技术栈
+    3. 全新冒险 — 完全未被使用的组合
+    """
+    if prefs is None:
+        # 没有历史记录时，返回随机推荐
+        ideas = []
+        for _ in range(count):
+            ideas.append({
+                "idea": generate_idea(),
+                "strategy": "🎲 随机探索",
+                "reason": "暂无历史记录，来一次随机冒险吧！",
+            })
+        return ideas
+
+    tech_counts = prefs["tech_counts"]
+    project_counts = prefs["project_counts"]
+    theme_counts = prefs["theme_counts"]
+    existing = prefs["existing_combos"]
+
+    # 找出所有名称列表
+    all_techs = {t["name"] for t in TECH_STACKS}
+    all_projects = {p["name"] for p in PROJECT_TYPES}
+    all_themes = {t["name"] for t in THEMES}
+
+    # 偏好分析
+    fav_tech = tech_counts.most_common(1)[0][0] if tech_counts else None
+    fav_theme = theme_counts.most_common(1)[0][0] if theme_counts else None
+    fav_project = project_counts.most_common(1)[0][0] if project_counts else None
+
+    # 未尝试或较少使用的
+    least_techs = [t for t in all_techs if tech_counts.get(t, 0) <= 1]
+    least_themes = [t for t in all_themes if theme_counts.get(t, 0) <= 1]
+    least_projects = [p for p in all_projects if project_counts.get(p, 0) <= 1]
+
+    recommendations = []
+    seen_combos = set()
+
+    def tech_by_name(name):
+        return next((t for t in TECH_STACKS if t["name"] == name), random.choice(TECH_STACKS))
+
+    def project_by_name(name):
+        return next((p for p in PROJECT_TYPES if p["name"] == name), random.choice(PROJECT_TYPES))
+
+    def theme_by_name(name):
+        return next((t for t in THEMES if t["name"] == name), random.choice(THEMES))
+
+    def add_recommendation(idea_dict, strategy, reason):
+        combo_key = (idea_dict["tech"]["name"], idea_dict["project"]["name"], idea_dict["theme"]["name"])
+        if combo_key not in seen_combos and combo_key not in existing:
+            seen_combos.add(combo_key)
+            recommendations.append({
+                "idea": idea_dict,
+                "strategy": strategy,
+                "reason": reason,
+            })
+            return True
+        return False
+
+    # 策略 1: 深度探索 — 最爱技术栈 + 新领域
+    if fav_tech and least_themes:
+        random.shuffle(least_themes)
+        for th_name in least_themes[:3]:
+            proj = random.choice(PROJECT_TYPES)
+            diff = random.choice(DIFFICULTIES)
+            idea = {
+                "tech": tech_by_name(fav_tech),
+                "project": proj,
+                "theme": theme_by_name(th_name),
+                "difficulty": diff,
+                "twist": random.choice(TWISTS),
+            }
+            if add_recommendation(
+                idea,
+                "🔍 深度探索",
+                f"你最常用 {fav_tech}，试试搭配「{th_name}」领域探索新方向！",
+            ):
+                break
+
+    # 策略 2: 跨界发现 — 新技术栈 + 最爱领域
+    if fav_theme and least_techs:
+        random.shuffle(least_techs)
+        for tech_name in least_techs[:3]:
+            proj = random.choice(PROJECT_TYPES)
+            diff = random.choice(DIFFICULTIES)
+            idea = {
+                "tech": tech_by_name(tech_name),
+                "project": proj,
+                "theme": theme_by_name(fav_theme),
+                "difficulty": diff,
+                "twist": random.choice(TWISTS),
+            }
+            if add_recommendation(
+                idea,
+                "🌐 跨界发现",
+                f"你喜欢「{fav_theme}」领域，试试用 {tech_name} 来做吧！",
+            ):
+                break
+
+    # 策略 3: 升级挑战 — 最爱组合 + 更高难度
+    if fav_tech and fav_theme:
+        hard_diffs = [d for d in DIFFICULTIES if d["stars"] >= 3]
+        proj = project_by_name(fav_project) if fav_project else random.choice(PROJECT_TYPES)
+        idea = {
+            "tech": tech_by_name(fav_tech),
+            "project": proj,
+            "theme": theme_by_name(fav_theme),
+            "difficulty": random.choice(hard_diffs),
+            "twist": random.choice(TWISTS),
+        }
+        add_recommendation(
+            idea,
+            "🔥 升级挑战",
+            f"你的最爱组合 {fav_tech} + {fav_theme}，来个高难度版本！",
+        )
+
+    # 策略 4: 新技术新领域 — 完全全新组合
+    for _ in range(5):
+        if least_techs and least_themes:
+            tech_name = random.choice(least_techs)
+            th_name = random.choice(least_themes)
+        else:
+            tech_name = random.choice(list(all_techs))
+            th_name = random.choice(list(all_themes))
+        proj_name = random.choice(list(all_projects))
+        idea = {
+            "tech": tech_by_name(tech_name),
+            "project": project_by_name(proj_name),
+            "theme": theme_by_name(th_name),
+            "difficulty": random.choice(DIFFICULTIES),
+            "twist": random.choice(TWISTS),
+        }
+        add_recommendation(
+            idea,
+            "✨ 全新冒险",
+            f"跳出舒适区！尝试 {tech_name} + {th_name} + {proj_name} 的全新组合。",
+        )
+        if len(recommendations) >= count:
+            break
+
+    # 策略 5: 热门搭配变体 — 最爱主题 + 最爱项目类型 + 新技术
+    if fav_theme and fav_project and len(recommendations) < count:
+        for _ in range(3):
+            tech_name = random.choice(list(all_techs))
+            idea = {
+                "tech": tech_by_name(tech_name),
+                "project": project_by_name(fav_project),
+                "theme": theme_by_name(fav_theme),
+                "difficulty": random.choice(DIFFICULTIES),
+                "twist": random.choice(TWISTS),
+            }
+            add_recommendation(
+                idea,
+                "🎯 偏好变体",
+                f"基于你喜欢的 {fav_project} × {fav_theme}，换个技术栈 {tech_name} 试试看。",
+            )
+            if len(recommendations) >= count:
+                break
+
+    # 补满不足的数量
+    while len(recommendations) < count:
+        idea = generate_idea()
+        add_recommendation(
+            idea,
+            "🎲 随机惊喜",
+            "随机推荐，说不定有意想不到的灵感！",
+        )
+
+    return recommendations[:count]
+
+
+def format_recommendations(recommendations, prefs=None):
+    """格式化推荐结果（支持 Rich 美化）"""
+    if RICH_AVAILABLE:
+        console.print()
+
+        # 偏好概览面板
+        if prefs:
+            pref_lines = []
+            if prefs["tech_counts"]:
+                top_tech = prefs["tech_counts"].most_common(3)
+                pref_lines.append(f"  🔧 最爱技术栈: {', '.join(f'{t[0]} ({t[1]}次)' for t in top_tech)}")
+            if prefs["theme_counts"]:
+                top_theme = prefs["theme_counts"].most_common(3)
+                pref_lines.append(f"  🎨 最爱领域: {', '.join(f'{t[0]} ({t[1]}次)' for t in top_theme)}")
+            if prefs["project_counts"]:
+                top_proj = prefs["project_counts"].most_common(3)
+                pref_lines.append(f"  📁 最爱项目类型: {', '.join(f'{t[0]} ({t[1]}次)' for t in top_proj)}")
+            pref_lines.append(f"  📈 总计生成: {prefs['total']} 个创意")
+
+            pref_text = "\n".join(pref_lines)
+            console.print(Panel(
+                pref_text,
+                title="🧠 你的偏好画像",
+                border_style="bright_yellow",
+                expand=False,
+            ))
+
+        # 推荐卡片
+        for i, rec in enumerate(recommendations, 1):
+            idea = rec["idea"]
+            t = idea["tech"]
+            p = idea["project"]
+            th = idea["theme"]
+            d = idea["difficulty"]
+            w = idea["twist"]
+            stars = "⭐" * d["stars"]
+
+            strategy = rec["strategy"]
+            reason = rec["reason"]
+
+            table = Table(show_header=False, box=box.ROUNDED, padding=(0, 1),
+                          border_style="bright_green", expand=False)
+            table.add_column("key", style="bold cyan", no_wrap=True)
+            table.add_column("value", style="white")
+            table.add_row(f"{t['emoji']} 技术栈", f"[bold green]{t['name']}[/bold green]")
+            table.add_row(f"{p['emoji']} 项目类型", f"[bold yellow]{p['name']}[/bold yellow] — {p['desc']}")
+            table.add_row(f"{th['emoji']} 领域", f"[bold magenta]{th['name']}[/bold magenta] — {th['desc']}")
+            table.add_row(f"{d['emoji']} 难度", f"[bold red]{d['name']}[/bold red] {stars} (预计 {d['hours']})")
+            table.add_row("✨ Twist", f"[italic bright_white]{w}[/italic bright_white]")
+            table.add_row("💡 推荐理由", f"[bright_cyan]{reason}[/bright_cyan]")
+
+            panel_title = f"[bold]{strategy}[/bold]  推荐 #{i}"
+            panel = Panel(table, title=panel_title, border_style="bright_green", expand=False)
+            console.print(panel)
+
+        console.print()
+    else:
+        print()
+        if prefs:
+            print("  🧠 你的偏好画像:")
+            if prefs["tech_counts"]:
+                top_tech = prefs["tech_counts"].most_common(3)
+                print(f"     🔧 最爱技术栈: {', '.join(f'{t[0]} ({t[1]}次)' for t in top_tech)}")
+            if prefs["theme_counts"]:
+                top_theme = prefs["theme_counts"].most_common(3)
+                print(f"     🎨 最爱领域: {', '.join(f'{t[0]} ({t[1]}次)' for t in top_theme)}")
+            if prefs["project_counts"]:
+                top_proj = prefs["project_counts"].most_common(3)
+                print(f"     📁 最爱项目类型: {', '.join(f'{t[0]} ({t[1]}次)' for t in top_proj)}")
+            print(f"     📈 总计生成: {prefs['total']} 个创意")
+            print()
+
+        for i, rec in enumerate(recommendations, 1):
+            idea = rec["idea"]
+            t = idea["tech"]
+            p = idea["project"]
+            th = idea["theme"]
+            d = idea["difficulty"]
+            w = idea["twist"]
+            stars = "⭐" * d["stars"]
+            print(f"  {rec['strategy']} 推荐 #{i}")
+            print(f"  {'─' * 40}")
+            print(f"  {t['emoji']} 技术栈: {t['name']}")
+            print(f"  {p['emoji']} 项目类型: {p['name']} — {p['desc']}")
+            print(f"  {th['emoji']} 领域: {th['name']} — {th['desc']}")
+            print(f"  {d['emoji']} 难度: {d['name']} {stars} (预计 {d['hours']})")
+            print(f"  ✨ Twist: {w}")
+            print(f"  💡 推荐理由: {rec['reason']}")
+            print()
+
 
 # ═══════════════════════════════════════════
 # 数据库
@@ -3525,6 +3821,7 @@ _gen_completions() {{
         '--no-animation[禁用加载动画]'
         '--completion[生成补全脚本]'
         '--api-doc[生成 API 文档模板]'
+        '--recommend[基于历史偏好推荐项目]'
         '-h[显示帮助]'
         '--help[显示帮助]'
     )
@@ -3545,7 +3842,7 @@ _gen_completions() {{
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
 
-    opts="-n --count --save --hard --ai --tech --scaffold --reroll --history --stats --export --export-file --score --deps --deploy --cicd --api-doc --config-show --config-set --config-reset --no-animation --completion -h --help"
+    opts="-n --count --save --hard --ai --tech --scaffold --reroll --history --stats --export --export-file --score --deps --deploy --cicd --api-doc --recommend --config-show --config-set --config-reset --no-animation --completion -h --help"
 
     case "$prev" in
         --tech)
@@ -3570,6 +3867,10 @@ _gen_completions() {{
             ;;
         -n|--count)
             COMPREPLY=( $(compgen -W "1 2 3 5 10" -- "$cur") )
+            return 0
+            ;;
+        --recommend)
+            COMPREPLY=( $(compgen -W "3 5 10 15 20" -- "$cur") )
             return 0
             ;;
     esac
@@ -3623,6 +3924,9 @@ def main():
                        help="生成测试框架初始化模板 (pytest/jest/cargo test 等)")
     parser.add_argument("--api-doc", action="store_true",
                        help="生成 API 文档模板 (OpenAPI 3.0 规范)")
+    parser.add_argument("--recommend", type=int, nargs="?", const=5, default=None,
+                       metavar="N",
+                       help="基于历史偏好推荐项目 (默认推荐 5 个)")
     args = parser.parse_args()
 
     # ── 补全脚本生成（优先处理，不生成创意）──
@@ -3660,10 +3964,17 @@ def main():
     if args.stats:
         print_stats()
         return
+    if args.recommend is not None:
+        show_brief_animation("default", duration=0.5)
+        history = load_history()
+        prefs = analyze_preferences(history)
+        recommendations = recommend_ideas(prefs, count=args.recommend)
+        format_recommendations(recommendations, prefs)
+        return
     
     if RICH_AVAILABLE:
         # Rich 美化头部
-        title_text = Text("🎲 Random Project Generator v3.5", style="bold bright_white")
+        title_text = Text("🎲 Random Project Generator v3.6", style="bold bright_white")
         subtitle = Text("帮你找到下一个 vibecoding 项目!", style="bright_cyan")
         header_parts = [title_text, "\n", subtitle]
         if args.ai:
@@ -3702,7 +4013,7 @@ def main():
     else:
         print()
         print("  ╔══════════════════════════════════════╗")
-        print("  ║   🎲 Random Project Generator v3.5   ║")
+        print("  ║   🎲 Random Project Generator v3.6   ║")
         print("  ║   帮你找到下一个 vibecoding 项目!     ║")
         if args.ai:
             print("  ║   ✨ AI 增强模式已启用                ║")
