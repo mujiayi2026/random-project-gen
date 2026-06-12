@@ -21,6 +21,8 @@ Usage:
     python3 gen.py --export json --export-file my_ideas.json  # 指定文件名
     python3 gen.py --score             # 显示项目评分
     python3 gen.py -n 3 --score --ai   # AI + 评分组合
+    python3 gen.py --deps              # 显示推荐依赖库
+    python3 gen.py --deps --score      # 依赖推荐 + 评分组合
 """
 
 import random
@@ -344,6 +346,234 @@ TWISTS = [
     "做一个 mobile-first 的版本",
     "加上完善的测试覆盖",
 ]
+
+# ═══════════════════════════════════════════
+# 依赖推荐库
+# ═══════════════════════════════════════════
+
+DEP_RECOMMENDATIONS = {
+    "Python": [
+        {"name": "requests", "desc": "HTTP 请求库", "category": "网络"},
+        {"name": "fastapi", "desc": "高性能 Web 框架", "category": "Web"},
+        {"name": "pydantic", "desc": "数据验证与序列化", "category": "数据"},
+        {"name": "rich", "desc": "终端美化输出", "category": "CLI"},
+        {"name": "click", "desc": "命令行框架", "category": "CLI"},
+        {"name": "sqlalchemy", "desc": "ORM 数据库工具", "category": "数据库"},
+        {"name": "pytest", "desc": "测试框架", "category": "测试"},
+        {"name": "pandas", "desc": "数据处理分析", "category": "数据"},
+        {"name": "pillow", "desc": "图像处理", "category": "多媒体"},
+        {"name": "celery", "desc": "异步任务队列", "category": "异步"},
+        {"name": "httpx", "desc": "异步 HTTP 客户端", "category": "网络"},
+        {"name": "typer", "desc": "类型安全 CLI 框架", "category": "CLI"},
+    ],
+    "Node.js": [
+        {"name": "express", "desc": "Web 框架", "category": "Web"},
+        {"name": "axios", "desc": "HTTP 请求库", "category": "网络"},
+        {"name": "prisma", "desc": "现代化 ORM", "category": "数据库"},
+        {"name": "zod", "desc": "数据验证库", "category": "数据"},
+        {"name": "chalk", "desc": "终端颜色", "category": "CLI"},
+        {"name": "commander", "desc": "命令行框架", "category": "CLI"},
+        {"name": "jest", "desc": "测试框架", "category": "测试"},
+        {"name": "socket.io", "desc": "实时通信", "category": "实时"},
+        {"name": "bull", "desc": "任务队列", "category": "异步"},
+        {"name": "winston", "desc": "日志框架", "category": "工具"},
+        {"name": "dotenv", "desc": "环境变量管理", "category": "配置"},
+        {"name": "lodash", "desc": "工具函数库", "category": "工具"},
+    ],
+    "Rust": [
+        {"name": "tokio", "desc": "异步运行时", "category": "异步"},
+        {"name": "serde", "desc": "序列化框架", "category": "数据"},
+        {"name": "clap", "desc": "命令行解析", "category": "CLI"},
+        {"name": "reqwest", "desc": "HTTP 客户端", "category": "网络"},
+        {"name": "axum", "desc": "Web 框架", "category": "Web"},
+        {"name": "sqlx", "desc": "异步数据库", "category": "数据库"},
+        {"name": "anyhow", "desc": "错误处理", "category": "工具"},
+        {"name": "tracing", "desc": "日志追踪", "category": "工具"},
+        {"name": "crossterm", "desc": "终端操作", "category": "CLI"},
+        {"name": "rayon", "desc": "并行计算", "category": "性能"},
+    ],
+    "Go": [
+        {"name": "gin", "desc": "Web 框架", "category": "Web"},
+        {"name": "cobra", "desc": "命令行框架", "category": "CLI"},
+        {"name": "gorm", "desc": "ORM 框架", "category": "数据库"},
+        {"name": "zap", "desc": "高性能日志", "category": "工具"},
+        {"name": "viper", "desc": "配置管理", "category": "配置"},
+        {"name": "testify", "desc": "测试工具集", "category": "测试"},
+        {"name": "fiber", "desc": "Express 风格 Web 框架", "category": "Web"},
+        {"name": "pgx", "desc": "PostgreSQL 驱动", "category": "数据库"},
+        {"name": "go-redis", "desc": "Redis 客户端", "category": "数据库"},
+        {"name": "wire", "desc": "依赖注入", "category": "架构"},
+    ],
+    "TypeScript": [
+        {"name": "zod", "desc": "类型安全验证", "category": "数据"},
+        {"name": "trpc", "desc": "类型安全 RPC", "category": "API"},
+        {"name": "next", "desc": "React 全栈框架", "category": "Web"},
+        {"name": "prisma", "desc": "现代化 ORM", "category": "数据库"},
+        {"name": "vitest", "desc": "Vite 测试框架", "category": "测试"},
+        {"name": "effect", "desc": "函数式效果系统", "category": "架构"},
+        {"name": "drizzle-orm", "desc": "轻量 TypeScript ORM", "category": "数据库"},
+        {"name": "hono", "desc": "轻量 Web 框架", "category": "Web"},
+    ],
+    "React": [
+        {"name": "zustand", "desc": "轻量状态管理", "category": "状态"},
+        {"name": "tanstack-query", "desc": "数据请求管理", "category": "数据"},
+        {"name": "react-hook-form", "desc": "表单管理", "category": "表单"},
+        {"name": "framer-motion", "desc": "动画库", "category": "UI"},
+        {"name": "shadcn/ui", "desc": "组件库", "category": "UI"},
+        {"name": "tailwindcss", "desc": "原子化 CSS", "category": "样式"},
+        {"name": "react-router", "desc": "路由", "category": "路由"},
+        {"name": "react-query", "desc": "异步状态管理", "category": "数据"},
+    ],
+    "Vue": [
+        {"name": "pinia", "desc": "状态管理", "category": "状态"},
+        {"name": "vue-router", "desc": "路由管理", "category": "路由"},
+        {"name": "nuxt", "desc": "全栈框架", "category": "Web"},
+        {"name": "vuetify", "desc": "Material 组件库", "category": "UI"},
+        {"name": "vueuse", "desc": "组合式工具集", "category": "工具"},
+        {"name": "element-plus", "desc": "企业级组件库", "category": "UI"},
+    ],
+    "Svelte": [
+        {"name": "sveltekit", "desc": "全栈框架", "category": "Web"},
+        {"name": "svelte-routing", "desc": "路由", "category": "路由"},
+        {"name": "skeleton", "desc": "UI 组件库", "category": "UI"},
+        {"name": "mdsvex", "desc": "Markdown 预处理", "category": "内容"},
+    ],
+    "Flutter": [
+        {"name": "riverpod", "desc": "状态管理", "category": "状态"},
+        {"name": "dio", "desc": "HTTP 客户端", "category": "网络"},
+        {"name": "go_router", "desc": "声明式路由", "category": "路由"},
+        {"name": "flutter_bloc", "desc": "BLoC 状态管理", "category": "状态"},
+        {"name": "hive", "desc": "轻量数据库", "category": "存储"},
+        {"name": "freezed", "desc": "不可变数据类", "category": "数据"},
+    ],
+    "Swift": [
+        {"name": "Alamofire", "desc": "网络请求", "category": "网络"},
+        {"name": "SwiftUI", "desc": "声明式 UI", "category": "UI"},
+        {"name": "Combine", "desc": "响应式编程", "category": "异步"},
+        {"name": "Kingfisher", "desc": "图片加载缓存", "category": "多媒体"},
+        {"name": "SwiftyJSON", "desc": "JSON 解析", "category": "数据"},
+    ],
+    "Kotlin": [
+        {"name": "ktor", "desc": "Web 框架", "category": "Web"},
+        {"name": "koin", "desc": "依赖注入", "category": "架构"},
+        {"name": "retrofit", "desc": "类型安全 HTTP", "category": "网络"},
+        {"name": "room", "desc": "数据库 ORM", "category": "数据库"},
+        {"name": "jetpack-compose", "desc": "声明式 UI", "category": "UI"},
+        {"name": "coroutines", "desc": "协程", "category": "异步"},
+    ],
+    "C++": [
+        {"name": "fmt", "desc": "格式化库", "category": "工具"},
+        {"name": "spdlog", "desc": "日志库", "category": "工具"},
+        {"name": "nlohmann-json", "desc": "JSON 库", "category": "数据"},
+        {"name": "catch2", "desc": "测试框架", "category": "测试"},
+        {"name": "cmake", "desc": "构建系统", "category": "构建"},
+        {"name": "conan", "desc": "包管理", "category": "工具"},
+        {"name": "qt", "desc": "GUI 框架", "category": "UI"},
+        {"name": "boost", "desc": "通用工具库", "category": "工具"},
+    ],
+    "Lua": [
+        {"name": "luarocks", "desc": "包管理器", "category": "工具"},
+        {"name": "penlight", "desc": "标准库扩展", "category": "工具"},
+        {"name": "luasocket", "desc": "网络库", "category": "网络"},
+        {"name": "cjson", "desc": "JSON 解析", "category": "数据"},
+        {"name": "openresty", "desc": "Nginx + Lua 平台", "category": "Web"},
+    ],
+    "Elixir": [
+        {"name": "phoenix", "desc": "Web 框架", "category": "Web"},
+        {"name": "ecto", "desc": "数据库框架", "category": "数据库"},
+        {"name": "oban", "desc": "后台任务", "category": "异步"},
+        {"name": "liveview", "desc": "实时 UI", "category": "实时"},
+        {"name": "absinthe", "desc": "GraphQL", "category": "API"},
+    ],
+    "Zig": [
+        {"name": "zap", "desc": "Web 框架", "category": "Web"},
+        {"name": "ziglyph", "desc": "Unicode 处理", "category": "文本"},
+        {"name": "zigzag", "desc": "SDL2 绑定", "category": "多媒体"},
+        {"name": "zon", "desc": "配置格式", "category": "配置"},
+    ],
+}
+
+# 主题到推荐依赖类别的映射（用于智能排序）
+THEME_DEP_CATEGORIES = {
+    "效率工具": ["CLI", "工具", "数据", "配置"],
+    "健康健身": ["数据", "UI", "存储", "网络"],
+    "音乐": ["多媒体", "UI", "网络", "数据"],
+    "游戏化": ["UI", "数据库", "实时", "状态"],
+    "AI/ML": ["数据", "异步", "网络", "工具"],
+    "社交": ["实时", "网络", "数据库", "UI"],
+    "学习教育": ["数据", "UI", "存储", "Web"],
+    "创意工具": ["UI", "多媒体", "数据", "Web"],
+    "自动化": ["异步", "网络", "CLI", "工具"],
+    "安全": ["网络", "数据", "CLI", "工具"],
+    "DevOps": ["CLI", "网络", "配置", "异步"],
+    "金融": ["数据", "数据库", "网络", "UI"],
+    "天气环境": ["网络", "数据", "UI", "Web"],
+    "美食": ["UI", "数据", "网络", "存储"],
+    "宠物": ["UI", "数据", "网络", "存储"],
+}
+
+
+def get_dep_recommendations(idea, top_n=6):
+    """根据技术栈和主题智能推荐依赖库"""
+    tech_name = idea["tech"]["name"]
+    theme_name = idea["theme"]["name"]
+
+    deps = DEP_RECOMMENDATIONS.get(tech_name, [])
+    if not deps:
+        return []
+
+    # 获取主题偏好的依赖类别
+    preferred_cats = THEME_DEP_CATEGORIES.get(theme_name, ["工具", "数据", "Web", "UI"])
+
+    # 按类别匹配度排序
+    def sort_key(dep):
+        cat = dep["category"]
+        if cat in preferred_cats:
+            return preferred_cats.index(cat)
+        return len(preferred_cats)  # 不匹配的排后面
+
+    sorted_deps = sorted(deps, key=sort_key)
+    return sorted_deps[:top_n]
+
+
+def format_dep_recommendations(idea, top_n=6):
+    """格式化依赖推荐输出（支持 Rich 美化）"""
+    deps = get_dep_recommendations(idea, top_n)
+    if not deps:
+        return ""
+
+    tech_name = idea["tech"]["name"]
+
+    if RICH_AVAILABLE:
+        table = Table(
+            title=f"📦 {tech_name} 推荐依赖库",
+            box=box.ROUNDED,
+            border_style="bright_green",
+            show_lines=False,
+            expand=False,
+        )
+        table.add_column("#", style="dim", width=3, justify="right")
+        table.add_column("包名", style="bold bright_cyan", width=18)
+        table.add_column("描述", style="white", width=24)
+        table.add_column("分类", style="bright_yellow", width=8)
+
+        for i, dep in enumerate(deps, 1):
+            table.add_row(str(i), dep["name"], dep["desc"], dep["category"])
+
+        return Panel(
+            table,
+            title=f"🔧 依赖推荐 — {tech_name}",
+            border_style="bright_green",
+            expand=False,
+        )
+    else:
+        lines = []
+        lines.append(f"  📦 {tech_name} 推荐依赖库:")
+        lines.append(f"  {'─' * 40}")
+        for i, dep in enumerate(deps, 1):
+            lines.append(f"  {i}. {dep['name']:<16} — {dep['desc']} [{dep['category']}]")
+        lines.append(f"  {'─' * 40}")
+        return "\n".join(lines)
 
 # ═══════════════════════════════════════════
 # 项目评分系统
@@ -1195,6 +1425,7 @@ def main():
     parser.add_argument("--export-file", type=str, default=None,
                        help="指定导出文件名 (配合 --export 使用)")
     parser.add_argument("--score", action="store_true", help="显示项目评分 (创新/实用/挑战/趣味)")
+    parser.add_argument("--deps", action="store_true", help="显示推荐依赖库 (根据技术栈+主题智能推荐)")
     args = parser.parse_args()
 
     if args.history:
@@ -1221,6 +1452,9 @@ def main():
         if args.score:
             header_parts.append("\n")
             header_parts.append(Text("📊 项目评分模式已启用", style="bright_cyan"))
+        if args.deps:
+            header_parts.append("\n")
+            header_parts.append(Text("🔧 依赖推荐模式已启用", style="bright_green"))
         
         from rich.console import Group
         header_group = Group(*header_parts)
@@ -1267,6 +1501,13 @@ def main():
                     console.print(score_output)
                 else:
                     print(score_output)
+            if args.deps:
+                dep_output = format_dep_recommendations(idea)
+                if dep_output:
+                    if RICH_AVAILABLE:
+                        console.print(dep_output)
+                    else:
+                        print(dep_output)
             save_to_history(idea, ai_desc, idea_score)
         else:
             result = format_idea(idea)
@@ -1279,6 +1520,13 @@ def main():
                     console.print(score_output)
                 else:
                     print(score_output)
+            if args.deps:
+                dep_output = format_dep_recommendations(idea)
+                if dep_output:
+                    if RICH_AVAILABLE:
+                        console.print(dep_output)
+                    else:
+                        print(dep_output)
             save_to_history(idea, score=idea_score)
     else:
         for i in range(args.count):
@@ -1305,6 +1553,13 @@ def main():
                         console.print(score_output)
                     else:
                         print(score_output)
+                if args.deps:
+                    dep_output = format_dep_recommendations(idea)
+                    if dep_output:
+                        if RICH_AVAILABLE:
+                            console.print(dep_output)
+                        else:
+                            print(dep_output)
                 save_to_history(idea, ai_desc, idea_score)
             else:
                 result = format_idea(idea, index=i+1 if args.count > 1 else None)
@@ -1317,6 +1572,13 @@ def main():
                         console.print(score_output)
                     else:
                         print(score_output)
+                if args.deps:
+                    dep_output = format_dep_recommendations(idea)
+                    if dep_output:
+                        if RICH_AVAILABLE:
+                            console.print(dep_output)
+                        else:
+                            print(dep_output)
                 save_to_history(idea, score=idea_score)
             
             print()
