@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🎲 Random Project Generator v3.2
+🎲 Random Project Generator v3.3
 随机组合技术栈 + 项目类型 + 领域，帮你找灵感！
 ✨ 终端美化：自动检测 Rich 库，提供彩色输出和精美面板
 
@@ -28,6 +28,8 @@ Usage:
     python3 gen.py --config-set ai true   # 默认开启 AI 描述
     python3 gen.py --config-set preferred_tech python,rust  # 设置偏好技术栈
     python3 gen.py --config-reset      # 重置为默认配置
+    python3 gen.py --no-animation       # 禁用加载动画
+    python3 gen.py --config-set animation false  # 禁用加载动画
 """
 
 import random
@@ -51,6 +53,9 @@ try:
     from rich.text import Text
     from rich.columns import Columns
     from rich import box
+    from rich.status import Status
+    from rich.live import Live
+    from rich.spinner import Spinner
     RICH_AVAILABLE = True
     console = Console()
 except ImportError:
@@ -58,6 +63,9 @@ except ImportError:
     console = None
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".gen_history.json")
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".gen_config.json")
+
+# 全局动画开关覆盖（命令行 --no-animation 使用，不持久化）
+_ANIMATION_OVERRIDE = None  # None = 使用配置, True/False = 强制覆盖
 
 # 默认配置
 DEFAULT_CONFIG = {
@@ -70,7 +78,120 @@ DEFAULT_CONFIG = {
     "export_format": None,
     "preferred_tech": [],
     "theme": "auto",  # auto / dark / light (预留)
+    "animation": True,  # 是否显示加载动画
 }
+
+
+
+
+# ═══════════════════════════════════════════
+# 动画效果
+# ═══════════════════════════════════════════
+
+# 有趣的加载消息（随机显示，增加趣味性）
+ANIMATION_MESSAGES = [
+    "🎲 掷骰子中...",
+    "🔮 水晶球占卜中...",
+    "🧠 灵感生成中...",
+    "⚡ 量子纠缠计算中...",
+    "🎯 正在瞄准好创意...",
+    "🌀 打开脑洞中...",
+    "✨ 魔法粉末调配中...",
+    "🎰 创意老虎机转转转...",
+    "🧬 组合基因序列中...",
+    "🚀 发射灵感火箭...",
+    "🎨 调色板混色中...",
+    "💡 灯泡正在点亮...",
+    "🔥 灵感引擎预热中...",
+    "🎪 创意马戏团开场...",
+    "🌟 星光闪烁中...",
+]
+
+# AI 专用加载消息
+AI_ANIMATION_MESSAGES = [
+    "🤖 AI 正在深度思考...",
+    "🧠 神经网络推理中...",
+    "💬 AI 助手构思中...",
+    "🔮 AI 预测最佳方案...",
+    "✨ AI 创意工坊运转中...",
+    "📝 AI 正在撰写描述...",
+    "🎯 AI 分析最佳组合...",
+    "⚡ AI 加速推理中...",
+]
+
+# Scaffold 专用加载消息
+SCAFFOLD_ANIMATION_MESSAGES = [
+    "🏗️  脚手架搭建中...",
+    "📂 文件目录结构生成中...",
+    "📝 模板文件填充中...",
+    "🔧 项目骨架组装中...",
+    "🎨 工程脚手架绘制中...",
+]
+
+
+def animated_operation(message_type, func, *args, **kwargs):
+    """带动画的操作包装器
+
+    Args:
+        message_type: 消息类型 (default/ai/scaffold)
+        func: 要执行的函数
+        *args, **kwargs: 传递给函数的参数
+
+    Returns:
+        函数返回值
+    """
+    cfg = load_config()
+    use_animation = (_ANIMATION_OVERRIDE if _ANIMATION_OVERRIDE is not None else cfg.get("animation", True)) and RICH_AVAILABLE
+
+    if not use_animation:
+        return func(*args, **kwargs)
+
+    # 选择消息列表
+    if message_type == "ai":
+        messages = AI_ANIMATION_MESSAGES
+        spinner = "dots12"
+    elif message_type == "scaffold":
+        messages = SCAFFOLD_ANIMATION_MESSAGES
+        spinner = "bouncingBar"
+    else:
+        messages = ANIMATION_MESSAGES
+        spinner = "dots"
+
+    msg = random.choice(messages)
+
+    with Status(msg, console=console, spinner=spinner, spinner_style="bright_cyan"):
+        result = func(*args, **kwargs)
+
+    return result
+
+
+def show_brief_animation(message_type="default", duration=0.8):
+    """显示短暂的加载动画（不需要执行函数时使用）
+
+    Args:
+        message_type: 消息类型
+        duration: 动画持续时间（秒）
+    """
+    cfg = load_config()
+    use_animation = (_ANIMATION_OVERRIDE if _ANIMATION_OVERRIDE is not None else cfg.get("animation", True)) and RICH_AVAILABLE
+    if not use_animation:
+        return
+
+    if message_type == "ai":
+        messages = AI_ANIMATION_MESSAGES
+        spinner = "dots12"
+    elif message_type == "scaffold":
+        messages = SCAFFOLD_ANIMATION_MESSAGES
+        spinner = "bouncingBar"
+    else:
+        messages = ANIMATION_MESSAGES
+        spinner = "dots"
+
+    msg = random.choice(messages)
+
+    with Status(msg, console=console, spinner=spinner, spinner_style="bright_cyan"):
+        time.sleep(duration)
+
 
 # ═══════════════════════════════════════════
 # 配置文件管理
@@ -154,6 +275,7 @@ def print_config():
             "export_format": "默认导出格式",
             "preferred_tech": "偏好技术栈",
             "theme": "界面主题 (预留)",
+            "animation": "加载动画效果",
         }
         for key in DEFAULT_CONFIG:
             cur = cfg[key]
@@ -198,6 +320,11 @@ def apply_config_defaults(args):
     cfg = load_config()
     # 只对用户没在命令行显式指定的参数应用配置默认值
     # argparse 不提供 easy way 检测"是否显式传入"，所以我们比较默认值
+
+    global _ANIMATION_OVERRIDE
+    if args.no_animation:
+        _ANIMATION_OVERRIDE = False
+
     if args.count == 1 and cfg["count"] != 1:
         args.count = cfg["count"]
     if not args.hard and cfg["hard"]:
@@ -1596,6 +1723,7 @@ def main():
     parser.add_argument("--config-set", nargs=2, metavar=("KEY", "VALUE"),
                        help="设置配置项 (如: --config-set count 3)")
     parser.add_argument("--config-reset", action="store_true", help="重置为默认配置")
+    parser.add_argument("--no-animation", action="store_true", help="禁用加载动画效果")
     args = parser.parse_args()
 
     # ── 配置管理命令（优先处理，不生成创意）──
@@ -1630,7 +1758,7 @@ def main():
     
     if RICH_AVAILABLE:
         # Rich 美化头部
-        title_text = Text("🎲 Random Project Generator v3.2", style="bold bright_white")
+        title_text = Text("🎲 Random Project Generator v3.3", style="bold bright_white")
         subtitle = Text("帮你找到下一个 vibecoding 项目!", style="bright_cyan")
         header_parts = [title_text, "\n", subtitle]
         if args.ai:
@@ -1657,7 +1785,7 @@ def main():
     else:
         print()
         print("  ╔══════════════════════════════════════╗")
-        print("  ║   🎲 Random Project Generator v3.2   ║")
+        print("  ║   🎲 Random Project Generator v3.3   ║")
         print("  ║   帮你找到下一个 vibecoding 项目!     ║")
         if args.ai:
             print("  ║   ✨ AI 增强模式已启用                ║")
@@ -1681,8 +1809,8 @@ def main():
             if RICH_AVAILABLE:
                 console.print("  [dim]🤖 正在生成 AI 描述...[/dim]")
             else:
-                print(f"  🤖 正在生成 AI 描述...")
-            ai_desc = get_ai_description(idea)
+                print("  🤖 正在生成 AI 描述...")
+            ai_desc = animated_operation("ai", get_ai_description, idea)
             ai_descriptions.append(ai_desc)
             result = format_ai_idea(idea, ai_desc) if ai_desc else format_idea(idea)
             if result:
@@ -1723,6 +1851,7 @@ def main():
             save_to_history(idea, score=idea_score)
     else:
         for i in range(args.count):
+            show_brief_animation("default", duration=0.4)
             idea = generate_idea(hard_mode=args.hard, tech_filter=args.tech)
             ideas.append(idea)
             
@@ -1731,7 +1860,7 @@ def main():
                     console.print(f"  [dim]🤖 正在为第 {i+1} 个项目生成 AI 描述...[/dim]")
                 else:
                     print(f"  🤖 正在为第 {i+1} 个项目生成 AI 描述...")
-                ai_desc = get_ai_description(idea)
+                ai_desc = animated_operation("ai", get_ai_description, idea)
                 ai_descriptions.append(ai_desc)
                 if ai_desc:
                     result = format_ai_idea(idea, ai_desc, index=i+1 if args.count > 1 else None)
@@ -1784,7 +1913,7 @@ def main():
             print("  🏗️  正在生成项目骨架...")
         for i, idea in enumerate(ideas):
             ai_desc = ai_descriptions[i] if i < len(ai_descriptions) and ai_descriptions[i] else None
-            project_dir = generate_scaffold(idea, ai_desc)
+            project_dir = animated_operation("scaffold", generate_scaffold, idea, ai_desc)
             if RICH_AVAILABLE:
                 console.print(f"  [bold bright_green]✅ 项目骨架已生成:[/bold bright_green] [cyan]{project_dir}[/cyan]")
             else:
