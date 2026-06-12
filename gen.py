@@ -35,6 +35,8 @@ Usage:
     python3 gen.py --cicd               # 生成 CI/CD 配置 (GitHub Actions)
     python3 gen.py --cicd --deploy      # CI/CD + 部署指南组合
     python3 gen.py --scaffold --cicd    # 骨架 + CI/CD 一步到位
+    python3 gen.py --completion bash    # 生成 Bash 自动补全脚本
+    python3 gen.py --completion zsh     # 生成 Zsh 自动补全脚本
 """
 
 import random
@@ -2734,6 +2736,108 @@ def generate_scaffold(idea, ai_desc=None):
     
     return project_dir
 
+
+# ═══════════════════════════════════════════
+# 命令行自动补全
+# ═══════════════════════════════════════════
+
+def generate_completion_script(shell="bash"):
+    """生成 shell 自动补全脚本"""
+    tech_names = [t["name"].lower().replace(".", "") for t in TECH_STACKS]
+    tech_list = " ".join(tech_names)
+    reroll_choices = "tech project theme difficulty twist"
+    export_choices = "json csv md markdown"
+    config_keys = " ".join(DEFAULT_CONFIG.keys())
+
+    if shell == "zsh":
+        return f"""#compdef gen.py
+# Zsh 自动补全脚本 — Random Project Generator
+# 安装: eval "$(python3 gen.py --completion zsh)"
+
+_gen_completions() {{
+    local -a commands
+    commands=(
+        '-n[生成数量]'
+        '--count[生成数量]'
+        '--save[保存到 ideas.md]'
+        '--hard[只生成高难度项目]'
+        '--ai[用 AI 生成详细描述]'
+        '--tech[指定技术栈 (逗号分隔)]'
+        '--scaffold[生成项目骨架代码]'
+        '--reroll[重新生成指定组件]'
+        '--history[查看历史记录]'
+        '--stats[查看使用统计]'
+        '--export[导出为文件]'
+        '--export-file[指定导出文件名]'
+        '--score[显示项目评分]'
+        '--deps[显示推荐依赖库]'
+        '--deploy[显示部署指南]'
+        '--cicd[生成 CI/CD 配置]'
+        '--config-show[显示当前配置]'
+        '--config-set[设置配置项]'
+        '--config-reset[重置为默认配置]'
+        '--no-animation[禁用加载动画]'
+        '--completion[生成补全脚本]'
+        '-h[显示帮助]'
+        '--help[显示帮助]'
+    )
+
+    _arguments -s $commands
+}}
+
+_gen_completions "$@"
+"""
+    else:  # bash
+        return f"""#!/bin/bash
+# Bash 自动补全脚本 — Random Project Generator
+# 安装: eval "$(python3 gen.py --completion bash)"
+
+_gen_completions() {{
+    local cur prev opts
+    COMPREPLY=()
+    cur="${{COMP_WORDS[COMP_CWORD]}}"
+    prev="${{COMP_WORDS[COMP_CWORD-1]}}"
+
+    opts="-n --count --save --hard --ai --tech --scaffold --reroll --history --stats --export --export-file --score --deps --deploy --cicd --config-show --config-set --config-reset --no-animation --completion -h --help"
+
+    case "$prev" in
+        --tech)
+            COMPREPLY=( $(compgen -W "{tech_list}" -- "$cur") )
+            return 0
+            ;;
+        --reroll)
+            COMPREPLY=( $(compgen -W "{reroll_choices}" -- "$cur") )
+            return 0
+            ;;
+        --export)
+            COMPREPLY=( $(compgen -W "{export_choices}" -- "$cur") )
+            return 0
+            ;;
+        --config-set)
+            COMPREPLY=( $(compgen -W "{config_keys}" -- "$cur") )
+            return 0
+            ;;
+        --completion)
+            COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") )
+            return 0
+            ;;
+        -n|--count)
+            COMPREPLY=( $(compgen -W "1 2 3 5 10" -- "$cur") )
+            return 0
+            ;;
+    esac
+
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+        return 0
+    fi
+}}
+
+complete -F _gen_completions gen.py
+complete -F _gen_completions python3
+"""
+
+
 # ═══════════════════════════════════════════
 # 主程序
 # ═══════════════════════════════════════════
@@ -2765,7 +2869,16 @@ def main():
     parser.add_argument("--deploy", action="store_true", help="显示部署指南 (Docker/云平台)")
     parser.add_argument("--cicd", action="store_true", help="生成 CI/CD 配置 (GitHub Actions)")
     parser.add_argument("--no-animation", action="store_true", help="禁用加载动画效果")
+    parser.add_argument("--completion", type=str, nargs="?", const="bash", default=None,
+                       metavar="SHELL", choices=["bash", "zsh"],
+                       help="生成 shell 自动补全脚本 (bash/zsh)")
     args = parser.parse_args()
+
+    # ── 补全脚本生成（优先处理，不生成创意）──
+    if args.completion is not None:
+        script = generate_completion_script(args.completion)
+        print(script)
+        return
 
     # ── 配置管理命令（优先处理，不生成创意）──
     if args.config_show:
