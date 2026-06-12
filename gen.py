@@ -12,6 +12,8 @@ Usage:
     python3 gen.py --tech python,node # 只用指定技术栈
     python3 gen.py --scaffold         # 生成项目骨架代码
     python3 gen.py --reroll tech      # 重新生成技术栈（交互模式）
+    python3 gen.py --history          # 查看历史记录
+    python3 gen.py --stats            # 查看使用统计
 """
 
 import random
@@ -20,6 +22,126 @@ import json
 import os
 import sys
 from datetime import datetime
+from collections import Counter
+
+HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".gen_history.json")
+
+# ═══════════════════════════════════════════
+# 历史记录
+# ═══════════════════════════════════════════
+
+def load_history():
+    """加载历史记录"""
+    if not os.path.exists(HISTORY_FILE):
+        return []
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return []
+
+def save_to_history(idea, ai_desc=None):
+    """保存一条生成记录到历史"""
+    history = load_history()
+    record = {
+        "timestamp": datetime.now().isoformat(),
+        "tech": idea["tech"]["name"],
+        "project": idea["project"]["name"],
+        "theme": idea["theme"]["name"],
+        "difficulty": idea["difficulty"]["name"],
+        "twist": idea["twist"],
+    }
+    if ai_desc:
+        record["project_name"] = ai_desc.get("project_name", "")
+        record["tagline"] = ai_desc.get("tagline", "")
+    history.append(record)
+    # 保留最近 500 条
+    if len(history) > 500:
+        history = history[-500:]
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+def print_history(limit=20):
+    """打印最近的历史记录"""
+    history = load_history()
+    if not history:
+        print("\n  📜 暂无历史记录，快去生成一些创意吧！\n")
+        return
+
+    print()
+    print("  ╔══════════════════════════════════════╗")
+    print("  ║       📜 历史记录 (最近生成)          ║")
+    print("  ╚══════════════════════════════════════╝")
+    print()
+
+    recent = history[-limit:][::-1]  # 最新的在前
+    for i, rec in enumerate(recent, 1):
+        ts = rec.get("timestamp", "?")
+        # 只显示日期时间的简短形式
+        try:
+            dt = datetime.fromisoformat(ts)
+            ts_str = dt.strftime("%m-%d %H:%M")
+        except Exception:
+            ts_str = ts[:16]
+        name = rec.get("project_name", "")
+        name_str = f" 📦 {name}" if name else ""
+        print(f"  {i:>3}. [{ts_str}] {rec['tech']} + {rec['project']} + {rec['theme']}{name_str}")
+
+    print(f"\n  共 {len(history)} 条记录 (显示最近 {len(recent)} 条)")
+    print()
+
+def print_stats():
+    """打印使用统计"""
+    history = load_history()
+    if not history:
+        print("\n  📊 暂无统计数据，快去生成一些创意吧！\n")
+        return
+
+    print()
+    print("  ╔══════════════════════════════════════╗")
+    print("  ║         📊 使用统计                  ║")
+    print("  ╚══════════════════════════════════════╝")
+    print()
+
+    tech_counts = Counter(r["tech"] for r in history)
+    project_counts = Counter(r["project"] for r in history)
+    theme_counts = Counter(r["theme"] for r in history)
+    diff_counts = Counter(r["difficulty"] for r in history)
+
+    def print_bar(label, count, total, width=20):
+        filled = int(width * count / total) if total else 0
+        bar = "█" * filled + "░" * (width - filled)
+        pct = count / total * 100 if total else 0
+        print(f"    {label:<12} {bar} {count:>4} ({pct:>5.1f}%)")
+
+    total = len(history)
+    print(f"  📈 总计生成 {total} 个创意\n")
+
+    print("  🔧 技术栈 TOP 10:")
+    for name, cnt in tech_counts.most_common(10):
+        print_bar(name, cnt, total)
+
+    print("\n  📁 项目类型 TOP 10:")
+    for name, cnt in project_counts.most_common(10):
+        print_bar(name, cnt, total)
+
+    print("\n  🎨 领域 TOP 10:")
+    for name, cnt in theme_counts.most_common(10):
+        print_bar(name, cnt, total)
+
+    print("\n  ⚡ 难度分布:")
+    for name, cnt in diff_counts.most_common():
+        print_bar(name, cnt, total)
+
+    # 显示重复创意
+    combos = Counter((r["tech"], r["project"], r["theme"]) for r in history)
+    duplicates = [(k, v) for k, v in combos.items() if v > 1]
+    if duplicates:
+        print(f"\n  ⚠️  重复组合 ({len(duplicates)} 组):")
+        for (tech, proj, theme), cnt in sorted(duplicates, key=lambda x: -x[1])[:5]:
+            print(f"    {tech} + {proj} + {theme} × {cnt}")
+
+    print()
 
 # ═══════════════════════════════════════════
 # 数据库
@@ -562,7 +684,16 @@ def main():
     parser.add_argument("--scaffold", action="store_true", help="生成项目骨架代码")
     parser.add_argument("--reroll", type=str, choices=["tech", "project", "theme", "difficulty", "twist"],
                        help="重新生成指定组件 (交互模式)")
+    parser.add_argument("--history", action="store_true", help="查看历史记录")
+    parser.add_argument("--stats", action="store_true", help="查看使用统计")
     args = parser.parse_args()
+
+    if args.history:
+        print_history()
+        return
+    if args.stats:
+        print_stats()
+        return
     
     print()
     print("  ╔══════════════════════════════════════╗")
@@ -594,8 +725,10 @@ def main():
                 print(format_ai_idea(idea, ai_desc))
             else:
                 print(format_idea(idea))
+            save_to_history(idea, ai_desc)
         else:
             print(format_idea(idea))
+            save_to_history(idea)
     else:
         for i in range(args.count):
             idea = generate_idea(hard_mode=args.hard, tech_filter=args.tech)
@@ -609,8 +742,10 @@ def main():
                     print(format_ai_idea(idea, ai_desc, index=i+1 if args.count > 1 else None))
                 else:
                     print(format_idea(idea, index=i+1 if args.count > 1 else None))
+                save_to_history(idea, ai_desc)
             else:
                 print(format_idea(idea, index=i+1 if args.count > 1 else None))
+                save_to_history(idea)
             
             print()
     
