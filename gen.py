@@ -1683,25 +1683,162 @@ SCAFFOLD_TEMPLATES = {
         "files": {
             "README.md": """# {project_name}
 
-{tagline}
+> {tagline}
 
-## 安装
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+**Tech Stack**: {tech_name} | **Type**: {project_type} | **Domain**: {theme_name} | **Difficulty**: {difficulty_name}
+
+## 📋 目录
+
+- [功能](#-功能)
+- [快速开始](#-快速开始)
+- [项目结构](#-项目结构)
+- [开发](#-开发)
+- [贡献](#-贡献)
+- [许可证](#-许可证)
+
+## 🎯 功能
+
+{features_list}
+
+## 🚀 快速开始
+
+### 前置要求
+
+- Python 3.10+
+- pip
+
+### 安装
 
 ```bash
+# 克隆项目
+git clone https://github.com/yourusername/{project_slug}.git
+cd {project_slug}
+
+# 创建虚拟环境
+python -m venv venv
+source venv/bin/activate  # Windows: venv\\Scripts\\activate
+
+# 安装依赖
 pip install -r requirements.txt
 ```
 
-## 使用
+### 运行
 
 ```bash
 python main.py
 ```
 
-## 功能
+### 运行测试
 
-{features_list}
+```bash
+pytest
+```
+
+## 📁 项目结构
+
+```
+{project_slug}/
+├── src/              # 源代码
+├── tests/            # 测试文件
+├── docs/             # 文档
+├── main.py           # 入口文件
+├── config.py         # 配置文件
+├── requirements.txt  # 依赖清单
+└── README.md         # 本文件
+```
+
+## 🔧 开发
+
+```bash
+# 安装开发依赖
+pip install -r requirements.txt
+pip install pytest flake8 black
+
+# 代码格式化
+black .
+
+# 代码检查
+flake8 .
+
+# 运行测试
+pytest -v
+```
+
+## 🤝 贡献
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何参与项目开发。
+
+## 📄 许可证
+
+本项目基于 MIT 许可证开源 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+---
+
+*Generated with 🎲 Random Project Generator*
 """,
             "requirements.txt": "# 项目依赖\n",
+            "CONTRIBUTING.md": """# 贡献指南
+
+感谢你对 {project_name} 的关注！🎉
+
+## 如何贡献
+
+### 报告 Bug
+
+1. 确保 Bug 尚未在 [Issues](../../issues) 中报告
+2. 创建一个新 Issue，包含：
+   - 清晰的标题和描述
+   - 复现步骤
+   - 期望行为 vs 实际行为
+   - 环境信息
+
+### 提交功能建议
+
+1. 在 [Issues](../../issues) 中创建功能请求
+2. 描述你想要的功能和使用场景
+3. 等待讨论和反馈
+
+### 提交代码
+
+1. Fork 本仓库
+2. 创建功能分支: `git checkout -b feature/amazing-feature`
+3. 提交更改: `git commit -m 'feat: add amazing feature'`
+4. 推送分支: `git push origin feature/amazing-feature`
+5. 创建 Pull Request
+
+### 代码规范
+
+- 保持代码简洁可读
+- 添加必要的注释
+- 编写测试覆盖新功能
+- 确保所有测试通过
+
+### Commit 消息格式
+
+使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式：
+
+```
+feat: 添加新功能
+fix: 修复 Bug
+docs: 更新文档
+style: 代码格式调整
+refactor: 代码重构
+test: 添加测试
+chore: 构建/工具变更
+```
+
+## 问题反馈
+
+如有任何问题，欢迎在 [Issues](../../issues) 中提出。
+
+---
+
+感谢你的贡献！🚀
+""",
             "main.py": """#!/usr/bin/env python3
 \"\"\"
 {project_name} - {tagline}
@@ -1739,23 +1876,100 @@ build/
         "files": {
             "README.md": """# {project_name}
 
-{tagline}
+> {tagline}
 
-## 安装
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green?logo=node.js&logoColor=white)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+**Tech Stack**: {tech_name} | **Type**: {project_type} | **Domain**: {theme_name} | **Difficulty**: {difficulty_name}
+
+## 📋 目录
+
+- [功能](#-功能)
+- [快速开始](#-快速开始)
+- [项目结构](#-项目结构)
+- [开发](#-开发)
+- [贡献](#-贡献)
+- [许可证](#-许可证)
+
+## 🎯 功能
+
+{features_list}
+
+## 🚀 快速开始
+
+### 前置要求
+
+- Node.js 18+
+- npm 或 yarn
+
+### 安装
 
 ```bash
+# 克隆项目
+git clone https://github.com/yourusername/{project_slug}.git
+cd {project_slug}
+
+# 安装依赖
 npm install
 ```
 
-## 使用
+### 运行
 
 ```bash
+# 开发模式
+npm run dev
+
+# 生产模式
 npm start
 ```
 
-## 功能
+### 运行测试
 
-{features_list}
+```bash
+npm test
+```
+
+## 📁 项目结构
+
+```
+{project_slug}/
+├── src/              # 源代码
+├── tests/            # 测试文件
+├── docs/             # 文档
+├── index.js          # 入口文件
+├── package.json      # 项目配置
+└── README.md         # 本文件
+```
+
+## 🔧 开发
+
+```bash
+# 安装开发依赖
+npm install
+
+# 代码检查
+npm run lint
+
+# 运行测试（带覆盖率）
+npm test -- --coverage
+
+# 构建
+npm run build
+```
+
+## 🤝 贡献
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何参与项目开发。
+
+## 📄 许可证
+
+本项目基于 MIT 许可证开源 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+---
+
+*Generated with 🎲 Random Project Generator*
 """,
             "package.json": """{{
   "name": "{project_slug}",
@@ -1787,6 +2001,64 @@ main();
 dist/
 *.log
 """,
+            "CONTRIBUTING.md": """# 贡献指南
+
+感谢你对 {project_name} 的关注！🎉
+
+## 如何贡献
+
+### 报告 Bug
+
+1. 确保 Bug 尚未在 [Issues](../../issues) 中报告
+2. 创建一个新 Issue，包含：
+   - 清晰的标题和描述
+   - 复现步骤
+   - 期望行为 vs 实际行为
+   - 环境信息
+
+### 提交功能建议
+
+1. 在 [Issues](../../issues) 中创建功能请求
+2. 描述你想要的功能和使用场景
+3. 等待讨论和反馈
+
+### 提交代码
+
+1. Fork 本仓库
+2. 创建功能分支: `git checkout -b feature/amazing-feature`
+3. 提交更改: `git commit -m 'feat: add amazing feature'`
+4. 推送分支: `git push origin feature/amazing-feature`
+5. 创建 Pull Request
+
+### 代码规范
+
+- 保持代码简洁可读
+- 添加必要的注释
+- 编写测试覆盖新功能
+- 确保所有测试通过
+
+### Commit 消息格式
+
+使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式：
+
+```
+feat: 添加新功能
+fix: 修复 Bug
+docs: 更新文档
+style: 代码格式调整
+refactor: 代码重构
+test: 添加测试
+chore: 构建/工具变更
+```
+
+## 问题反馈
+
+如有任何问题，欢迎在 [Issues](../../issues) 中提出。
+
+---
+
+感谢你的贡献！🚀
+""",
         },
         "dirs": ["src", "tests", "docs"],
     },
@@ -1794,11 +2066,131 @@ dist/
         "files": {
             "README.md": """# {project_name}
 
-{tagline}
+> {tagline}
 
-## 功能
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+**Tech Stack**: {tech_name} | **Type**: {project_type} | **Domain**: {theme_name} | **Difficulty**: {difficulty_name}
+
+## 📋 目录
+
+- [功能](#-功能)
+- [快速开始](#-快速开始)
+- [项目结构](#-项目结构)
+- [贡献](#-贡献)
+- [许可证](#-许可证)
+
+## 🎯 功能
 
 {features_list}
+
+## 🚀 快速开始
+
+### 前置要求
+
+- 根据技术栈安装相应运行环境
+
+### 安装
+
+```bash
+# 克隆项目
+git clone https://github.com/yourusername/{project_slug}.git
+cd {project_slug}
+
+# 安装依赖（根据技术栈选择）
+# Python: pip install -r requirements.txt
+# Node.js: npm install
+# Rust: cargo build
+# Go: go mod download
+```
+
+### 运行
+
+```bash
+# 根据技术栈运行项目
+# 参考 docs/ 目录下的详细文档
+```
+
+## 📁 项目结构
+
+```
+{project_slug}/
+├── src/              # 源代码
+├── tests/            # 测试文件
+├── docs/             # 文档
+└── README.md         # 本文件
+```
+
+## 🤝 贡献
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何参与项目开发。
+
+## 📄 许可证
+
+本项目基于 MIT 许可证开源 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+---
+
+*Generated with 🎲 Random Project Generator*
+""",
+            "CONTRIBUTING.md": """# 贡献指南
+
+感谢你对 {project_name} 的关注！🎉
+
+## 如何贡献
+
+### 报告 Bug
+
+1. 确保 Bug 尚未在 [Issues](../../issues) 中报告
+2. 创建一个新 Issue，包含：
+   - 清晰的标题和描述
+   - 复现步骤
+   - 期望行为 vs 实际行为
+   - 环境信息
+
+### 提交功能建议
+
+1. 在 [Issues](../../issues) 中创建功能请求
+2. 描述你想要的功能和使用场景
+3. 等待讨论和反馈
+
+### 提交代码
+
+1. Fork 本仓库
+2. 创建功能分支: `git checkout -b feature/amazing-feature`
+3. 提交更改: `git commit -m 'feat: add amazing feature'`
+4. 推送分支: `git push origin feature/amazing-feature`
+5. 创建 Pull Request
+
+### 代码规范
+
+- 保持代码简洁可读
+- 添加必要的注释
+- 编写测试覆盖新功能
+- 确保所有测试通过
+
+### Commit 消息格式
+
+使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式：
+
+```
+feat: 添加新功能
+fix: 修复 Bug
+docs: 更新文档
+style: 代码格式调整
+refactor: 代码重构
+test: 添加测试
+chore: 构建/工具变更
+```
+
+## 问题反馈
+
+如有任何问题，欢迎在 [Issues](../../issues) 中提出。
+
+---
+
+感谢你的贡献！🚀
 """,
         },
         "dirs": ["src", "tests", "docs"],
@@ -2317,6 +2709,10 @@ def generate_scaffold(idea, ai_desc=None):
     
     # 创建文件
     features_list = "\n".join([f"- {f}" for f in features])
+    tech_name = t["name"]
+    theme_name = idea["theme"]["name"]
+    project_type = idea["project"]["name"]
+    difficulty_name = idea["difficulty"]["name"]
     
     for filename, content in template["files"].items():
         filepath = f"{project_dir}/{filename}"
@@ -2325,6 +2721,10 @@ def generate_scaffold(idea, ai_desc=None):
             project_slug=project_slug,
             tagline=tagline,
             features_list=features_list,
+            tech_name=tech_name,
+            theme_name=theme_name,
+            project_type=project_type,
+            difficulty_name=difficulty_name,
         )
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(formatted_content)
