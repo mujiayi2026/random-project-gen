@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🎲 Random Project Generator v3.3
+🎲 Random Project Generator v3.4
 随机组合技术栈 + 项目类型 + 领域，帮你找灵感！
 ✨ 终端美化：自动检测 Rich 库，提供彩色输出和精美面板
 
@@ -37,6 +37,8 @@ Usage:
     python3 gen.py --scaffold --cicd    # 骨架 + CI/CD 一步到位
     python3 gen.py --completion bash    # 生成 Bash 自动补全脚本
     python3 gen.py --completion zsh     # 生成 Zsh 自动补全脚本
+    python3 gen.py --test-init           # 生成测试框架初始化模板
+    python3 gen.py --scaffold --test-init # 骨架 + 测试框架一步到位
 """
 
 import random
@@ -1509,6 +1511,404 @@ def format_cicd_config(idea, ai_desc=None):
 
 
 # ═══════════════════════════════════════════
+# 测试框架初始化
+# ═══════════════════════════════════════════
+
+# 各技术栈的测试模板：文件路径、安装命令、示例测试代码
+TEST_TEMPLATES = {
+    "Python": {
+        "framework": "pytest",
+        "install": "pip install pytest pytest-cov",
+        "config_file": "pytest.ini",
+        "config_content": (
+            "[pytest]\n"
+            "testpaths = tests\n"
+            "addopts = -v --tb=short --cov=src --cov-report=term-missing\n"
+            "python_files = test_*.py\n"
+            "python_functions = test_*\n"
+        ),
+        "test_files": {
+            "tests/__init__.py": "",
+            "tests/test_main.py": (
+                '"""主模块测试"""\n'
+                "import pytest\n"
+                "\n"
+                "\n"
+                "def test_placeholder():\n"
+                '    """基础占位测试 — 确保测试框架正常工作"""\n'
+                "    assert True\n"
+                "\n"
+                "\n"
+                "@pytest.fixture\n"
+                "def sample_data():\n"
+                '    """示例 fixture — 提供测试数据"""\n'
+                "    return {\"key\": \"value\", \"count\": 42}\n"
+                "\n"
+                "\n"
+                "def test_sample_data(sample_data):\n"
+                '    """测试 fixture 数据"""\n'
+                '    assert sample_data["key"] == "value"\n'
+                "    assert sample_data[\"count\"] > 0\n"
+                "\n"
+                "\n"
+                "@pytest.mark.parametrize(\"input_val,expected\", [\n"
+                '    ("hello", "HELLO"),\n'
+                '    ("world", "WORLD"),\n'
+                '    ("", ""),\n'
+                "])\n"
+                "def test_parametrized_example(input_val, expected):\n"
+                '    """参数化测试示例"""\n'
+                "    assert input_val.upper() == expected\n"
+            ),
+            "tests/conftest.py": (
+                '"""共享 fixtures 和配置"""\n'
+                "import pytest\n"
+                "\n"
+                "\n"
+                "@pytest.fixture(scope=\"session\")\n"
+                "def app_config():\n"
+                '    """应用配置 fixture — 会话级别共享"""\n'
+                "    return {\n"
+                '        "debug": True,\n'
+                '        "testing": True,\n'
+                '        "database_url": "sqlite:///:memory:",\n'
+                "    }\n"
+            ),
+        },
+        "tips": [
+            "使用 pytest.mark.parametrize 进行参数化测试",
+            "conftest.py 中定义共享 fixtures",
+            "用 pytest-cov 生成覆盖率报告",
+            "运行: pytest --cov-report=html 查看详细覆盖率",
+        ],
+    },
+    "Node.js": {
+        "framework": "Jest",
+        "install": "npm install --save-dev jest @types/jest",
+        "config_file": "jest.config.js",
+        "config_content": (
+            "module.exports = {\n"
+            "  testEnvironment: 'node',\n"
+            "  roots: ['<rootDir>/tests'],\n"
+            "  testMatch: ['**/*.test.js'],\n"
+            "  collectCoverage: true,\n"
+            "  coverageDirectory: 'coverage',\n"
+            "  coverageReporters: ['text', 'lcov'],\n"
+            "  verbose: true,\n"
+            "};\n"
+        ),
+        "test_files": {
+            "tests/main.test.js": (
+                "/**\n"
+                " * 主模块测试\n"
+                " */\n"
+                "\n"
+                "describe('{project_name}', () => {\n"
+                "  test('should pass placeholder test', () => {\n"
+                "    expect(true).toBe(true);\n"
+                "  });\n"
+                "\n"
+                "  test('should demonstrate assertion patterns', () => {\n"
+                "    const result = { success: true, count: 42 };\n"
+                "    expect(result.success).toBe(true);\n"
+                "    expect(result.count).toBeGreaterThan(0);\n"
+                "  });\n"
+                "\n"
+                "  describe('async operations', () => {\n"
+                "    test('should handle async/await', async () => {\n"
+                "      const value = await Promise.resolve('hello');\n"
+                "      expect(value).toBe('hello');\n"
+                "    });\n"
+                "  });\n"
+                "});\n"
+            ),
+            "tests/setup.js": (
+                "/**\n"
+                " * 全局测试设置\n"
+                " */\n"
+                "\n"
+                "beforeAll(() => {\n"
+                "  // 全局初始化\n"
+                "  process.env.NODE_ENV = 'test';\n"
+                "});\n"
+                "\n"
+                "afterAll(() => {\n"
+                "  // 全局清理\n"
+                "});\n"
+            ),
+        },
+        "tips": [
+            "使用 describe/it 组织测试层次结构",
+            "jest.mock() 进行模块 mock",
+            "添加 \"test\" 脚本到 package.json: jest",
+            "运行: npx jest --watch 开启监听模式",
+        ],
+    },
+    "TypeScript": {
+        "framework": "Jest + ts-jest",
+        "install": "npm install --save-dev jest ts-jest @types/jest",
+        "config_file": "jest.config.ts",
+        "config_content": (
+            "import type { Config } from 'jest';\n"
+            "\n"
+            "const config: Config = {\n"
+            "  preset: 'ts-jest',\n"
+            "  testEnvironment: 'node',\n"
+            "  roots: ['<rootDir>/tests'],\n"
+            "  testMatch: ['**/*.test.ts'],\n"
+            "  collectCoverage: true,\n"
+            "  coverageDirectory: 'coverage',\n"
+            "  transform: {\n"
+            "    '^.+\\\\.tsx?$': 'ts-jest',\n"
+            "  },\n"
+            "};\n"
+            "\n"
+            "export default config;\n"
+        ),
+        "test_files": {
+            "tests/main.test.ts": (
+                "/**\n"
+                " * 主模块测试\n"
+                " */\n"
+                "\n"
+                "describe('{project_name}', () => {\n"
+                "  test('should pass placeholder test', () => {\n"
+                "    expect(true).toBe(true);\n"
+                "  });\n"
+                "\n"
+                "  test('should type-check correctly', () => {\n"
+                "    const result: { success: boolean; count: number } = {\n"
+                "      success: true,\n"
+                "      count: 42,\n"
+                "    };\n"
+                "    expect(result.success).toBe(true);\n"
+                "    expect(result.count).toBeGreaterThan(0);\n"
+                "  });\n"
+                "});\n"
+            ),
+        },
+        "tips": [
+            "使用 ts-jest 直接运行 TypeScript 测试",
+            "利用 TypeScript 类型系统增强测试安全性",
+            "添加 \"test\" 脚本到 package.json: jest",
+            "运行: npx jest --coverage 查看覆盖率",
+        ],
+    },
+    "Rust": {
+        "framework": "cargo test (内置)",
+        "install": "无需额外安装 — Rust 内置测试框架",
+        "config_file": "Cargo.toml (已有)",
+        "config_content": (
+            "# 在 Cargo.toml 的 [dev-dependencies] 中添加:\n"
+            "[dev-dependencies]\n"
+            "assert_cmd = \"2.0\"    # CLI 集成测试\n"
+            "predicates = \"3.0\"    # 断言谓词\n"
+            "tempfile = \"3\"        # 临时文件\n"
+        ),
+        "test_files": {
+            "tests/integration_test.rs": (
+                "//! 集成测试\n"
+                "\n"
+                "#[cfg(test)]\n"
+                "mod tests {\n"
+                "    #[test]\n"
+                "    fn test_placeholder() {\n"
+                "        assert_eq!(2 + 2, 4);\n"
+                "    }\n"
+                "\n"
+                "    #[test]\n"
+                "    fn test_string_operations() {\n"
+                "        let input = \"hello\";\n"
+                "        let result = input.to_uppercase();\n"
+                "        assert_eq!(result, \"HELLO\");\n"
+                "    }\n"
+                "\n"
+                "    #[test]\n"
+                "    #[should_panic(expected = \"division by zero\")]\n"
+                "    fn test_error_handling() {\n"
+                "        // 示例：测试 panic 场景\n"
+                "        let _x: i32 = 1i32.checked_div(0).expect(\"division by zero\");\n"
+                "    }\n"
+                "}\n"
+            ),
+        },
+        "tips": [
+            "单元测试写在 src/ 中用 #[cfg(test)] 模块",
+            "集成测试放在 tests/ 目录下",
+            "运行: cargo test -- --nocapture 查看 println 输出",
+            "cargo test -- --test-threads=1 串行运行测试",
+        ],
+    },
+    "Go": {
+        "framework": "testing (内置)",
+        "install": "无需额外安装 — Go 内置测试框架",
+        "config_file": "N/A",
+        "config_content": (
+            "# 推荐安装额外工具:\n"
+            "# go install github.com/stretchr/testify@latest\n"
+            "# go install github.com/golang/mock/mockgen@latest\n"
+        ),
+        "test_files": {
+            "main_test.go": (
+                "package main\n"
+                "\n"
+                "import \"testing\"\n"
+                "\n"
+                "func TestPlaceholder(t *testing.T) {\n"
+                "\t// 基础占位测试\n"
+                "\tgot := 2 + 2\n"
+                "\twant := 4\n"
+                "\tif got != want {\n"
+                "\t\tt.Errorf(\"got %d, want %d\", got, want)\n"
+                "\t}\n"
+                "}\n"
+                "\n"
+                "func TestStringOps(t *testing.T) {\n"
+                "\ttests := []struct {\n"
+                "\t\tname string\n"
+                "\t\tinput string\n"
+                "\t\twant  string\n"
+                "\t}{\n"
+                "\t\t{\"uppercase\", \"hello\", \"HELLO\"},\n"
+                "\t\t{\"empty\", \"\", \"\"},\n"
+                "\t}\n"
+                "\tfor _, tt := range tests {\n"
+                "\t\tt.Run(tt.name, func(t *testing.T) {\n"
+                "\t\t\tgot := strings.ToUpper(tt.input)\n"
+                "\t\t\tif got != tt.want {\n"
+                "\t\t\t\tt.Errorf(\"got %q, want %q\", got, tt.want)\n"
+                "\t\t\t}\n"
+                "\t\t})\n"
+                "\t}\n"
+                "}\n"
+            ),
+        },
+        "tips": [
+            "测试文件必须以 _test.go 结尾",
+            "使用 t.Run() 创建子测试",
+            "运行: go test -v -cover ./...",
+            "使用 table-driven tests 模式组织测试",
+        ],
+    },
+    "default": {
+        "framework": "通用测试框架",
+        "install": "根据技术栈选择对应测试框架",
+        "config_file": "tests/",
+        "config_content": "# 请根据项目技术栈选择合适的测试框架\n",
+        "test_files": {
+            "tests/test_example.md": (
+                "# 测试文档\n"
+                "\n"
+                "## 测试计划\n"
+                "\n"
+                "### 单元测试\n"
+                "- [ ] 核心功能测试\n"
+                "- [ ] 边界条件测试\n"
+                "- [ ] 错误处理测试\n"
+                "\n"
+                "### 集成测试\n"
+                "- [ ] API 端点测试\n"
+                "- [ ] 数据库交互测试\n"
+                "- [ ] 外部服务 mock 测试\n"
+                "\n"
+                "### E2E 测试\n"
+                "- [ ] 用户流程测试\n"
+                "- [ ] 性能基准测试\n"
+            ),
+        },
+        "tips": [
+            "选择适合你技术栈的测试框架",
+            "先写核心功能的测试，再逐步扩展",
+            "保持测试覆盖率 > 70%",
+        ],
+    },
+}
+
+
+def format_test_init(idea, ai_desc=None):
+    """格式化测试框架初始化输出（支持 Rich 美化）"""
+    tech_name = idea["tech"]["name"]
+    project_name = ai_desc["project_name"] if ai_desc else f"{tech_name}Project"
+    project_slug = project_name.lower().replace(" ", "-")
+
+    template = TEST_TEMPLATES.get(tech_name, TEST_TEMPLATES["default"])
+
+    # 替换模板变量
+    def _fill(text):
+        return (text
+                .replace("{project_name}", project_name)
+                .replace("{project_slug}", project_slug))
+
+    if RICH_AVAILABLE:
+        from rich.syntax import Syntax
+        from rich.console import Group
+
+        parts = []
+        parts.append(f"[bold bright_white]🧪 测试框架初始化 — {tech_name}[/bold bright_white]\n")
+
+        # 框架信息
+        parts.append(f"[bold bright_cyan]🔧 测试框架:[/bold bright_cyan] [bold]{template['framework']}[/bold]")
+        parts.append(f"[bold bright_green]📦 安装命令:[/bold bright_green] [dim]{template['install']}[/dim]")
+        parts.append(f"[bold bright_magenta]⚙️  配置文件:[/bold bright_magenta] [cyan]{template['config_file']}[/cyan]\n")
+
+        # 配置文件
+        config_content = _fill(template["config_content"])
+        parts.append("[bold bright_yellow]📄 测试配置:[/bold bright_yellow]")
+        lang = "ini" if tech_name == "Python" else ("javascript" if tech_name == "Node.js" else ("typescript" if tech_name == "TypeScript" else ("toml" if tech_name == "Rust" else "bash")))
+        parts.append(Syntax(config_content.rstrip(), lang, theme="monokai", line_numbers=False))
+
+        # 测试文件
+        for filepath, content in template["test_files"].items():
+            file_content = _fill(content)
+            if not file_content.strip():
+                continue
+            ext = filepath.rsplit(".", 1)[-1] if "." in filepath else "text"
+            syntax_lang = {"py": "python", "js": "javascript", "ts": "typescript", "rs": "rust", "go": "go", "md": "markdown"}.get(ext, "text")
+            parts.append(f"\n[bold bright_yellow]📄 {filepath}:[/bold bright_yellow]")
+            parts.append(Syntax(file_content.rstrip(), syntax_lang, theme="monokai", line_numbers=False))
+
+        # 测试技巧
+        tips_text = ""
+        for tip in template["tips"]:
+            tips_text += f"  💡 {tip}\n"
+        parts.append(f"\n[bold bright_cyan]🎯 测试技巧:[/bold bright_cyan]\n{tips_text}")
+
+        renderable = Group(*parts)
+        return Panel(renderable, title=f"🧪 测试初始化 — {tech_name}",
+                      border_style="bright_cyan", expand=False, padding=(1, 2))
+    else:
+        lines = []
+        lines.append(f"  🧪 测试框架初始化 — {tech_name}")
+        lines.append(f"  {'═' * 44}")
+
+        lines.append(f"\n  🔧 测试框架: {template['framework']}")
+        lines.append(f"  📦 安装命令: {template['install']}")
+        lines.append(f"  ⚙️  配置文件: {template['config_file']}")
+
+        config_content = _fill(template["config_content"])
+        lines.append(f"\n  📄 测试配置:")
+        lines.append(f"  {'─' * 40}")
+        for line in config_content.strip().split("\n"):
+            lines.append(f"    {line}")
+
+        for filepath, content in template["test_files"].items():
+            file_content = _fill(content)
+            if not file_content.strip():
+                continue
+            lines.append(f"\n  📄 {filepath}:")
+            lines.append(f"  {'─' * 40}")
+            for line in file_content.strip().split("\n"):
+                lines.append(f"    {line}")
+
+        lines.append(f"\n  🎯 测试技巧:")
+        for tip in template["tips"]:
+            lines.append(f"    💡 {tip}")
+
+        lines.append(f"\n  {'═' * 44}")
+        return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════
 # 项目评分系统
 # ═══════════════════════════════════════════
 
@@ -1860,6 +2260,46 @@ CONFIG = {{
     "debug": True,
 }}
 """,
+            "tests/__init__.py": "",
+            "tests/test_main.py": """#!/usr/bin/env python3
+\"\"\"
+{project_name} - 测试套件
+\"\"\"
+
+import pytest
+
+
+def test_placeholder():
+    \"\"\"占位测试 — 替换为实际测试\"\"\"
+    assert True
+
+
+def test_import():
+    \"\"\"测试主模块可以导入\"\"\"
+    try:
+        import main
+        assert hasattr(main, "main")
+    except ImportError:
+        pytest.skip("main module not yet implemented")
+
+
+class TestPlaceholder:
+    \"\"\"测试类示例\"\"\"
+
+    def test_example(self):
+        \"\"\"示例测试\"\"\"
+        result = 1 + 1
+        assert result == 2
+
+    @pytest.mark.parametrize("input_val,expected", [
+        (1, 1),
+        (2, 4),
+        (3, 9),
+    ])
+    def test_parametrized(self, input_val, expected):
+        \"\"\"参数化测试示例\"\"\"
+        assert input_val ** 2 == expected
+""",
             ".gitignore": """__pycache__/
 *.py[cod]
 *$py.class
@@ -1870,6 +2310,9 @@ venv/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.coverage
+htmlcov/
 """,
         },
         "dirs": ["src", "tests", "docs"],
@@ -2002,6 +2445,27 @@ main();
 .env
 dist/
 *.log
+coverage/
+""",
+            "tests/index.test.js": """/**
+ * {project_name} - 测试套件
+ */
+
+describe('{project_name}', () => {{
+  test('placeholder test', () => {{
+    expect(true).toBe(true);
+  }});
+
+  test('basic math', () => {{
+    expect(1 + 1).toBe(2);
+  }});
+
+  test('string operations', () => {{
+    const str = '{project_name}';
+    expect(str.length).toBeGreaterThan(0);
+    expect(str.toLowerCase()).toBe(str.toLowerCase());
+  }});
+}});
 """,
             "CONTRIBUTING.md": """# 贡献指南
 
@@ -2872,6 +3336,8 @@ def main():
     parser.add_argument("--completion", type=str, nargs="?", const="bash", default=None,
                        metavar="SHELL", choices=["bash", "zsh"],
                        help="生成 shell 自动补全脚本 (bash/zsh)")
+    parser.add_argument("--test-init", action="store_true",
+                       help="生成测试框架初始化模板 (pytest/jest/cargo test 等)")
     args = parser.parse_args()
 
     # ── 补全脚本生成（优先处理，不生成创意）──
@@ -2912,7 +3378,7 @@ def main():
     
     if RICH_AVAILABLE:
         # Rich 美化头部
-        title_text = Text("🎲 Random Project Generator v3.3", style="bold bright_white")
+        title_text = Text("🎲 Random Project Generator v3.4", style="bold bright_white")
         subtitle = Text("帮你找到下一个 vibecoding 项目!", style="bright_cyan")
         header_parts = [title_text, "\n", subtitle]
         if args.ai:
@@ -2936,6 +3402,9 @@ def main():
         if args.cicd:
             header_parts.append("\n")
             header_parts.append(Text("⚙️  CI/CD 配置模式已启用", style="bright_green"))
+        if args.test_init:
+            header_parts.append("\n")
+            header_parts.append(Text("🧪 测试框架初始化模式已启用", style="bright_cyan"))
         
         from rich.console import Group
         header_group = Group(*header_parts)
@@ -2945,7 +3414,7 @@ def main():
     else:
         print()
         print("  ╔══════════════════════════════════════╗")
-        print("  ║   🎲 Random Project Generator v3.3   ║")
+        print("  ║   🎲 Random Project Generator v3.4   ║")
         print("  ║   帮你找到下一个 vibecoding 项目!     ║")
         if args.ai:
             print("  ║   ✨ AI 增强模式已启用                ║")
@@ -3001,6 +3470,12 @@ def main():
                     console.print(cicd_output)
                 else:
                     print(cicd_output)
+            if args.test_init:
+                test_init_output = format_test_init(idea, ai_desc if args.ai else None)
+                if RICH_AVAILABLE:
+                    console.print(test_init_output)
+                else:
+                    print(test_init_output)
             save_to_history(idea, ai_desc, idea_score)
         else:
             result = format_idea(idea)
@@ -3032,6 +3507,12 @@ def main():
                     console.print(cicd_output)
                 else:
                     print(cicd_output)
+            if args.test_init:
+                test_init_output = format_test_init(idea)
+                if RICH_AVAILABLE:
+                    console.print(test_init_output)
+                else:
+                    print(test_init_output)
             save_to_history(idea, score=idea_score)
     else:
         for i in range(args.count):
@@ -3078,6 +3559,12 @@ def main():
                         console.print(cicd_output)
                     else:
                         print(cicd_output)
+                if args.test_init:
+                    test_init_output = format_test_init(idea, ai_desc)
+                    if RICH_AVAILABLE:
+                        console.print(test_init_output)
+                    else:
+                        print(test_init_output)
                 save_to_history(idea, ai_desc, idea_score)
             else:
                 result = format_idea(idea, index=i+1 if args.count > 1 else None)
@@ -3109,6 +3596,12 @@ def main():
                         console.print(cicd_output)
                     else:
                         print(cicd_output)
+                if args.test_init:
+                    test_init_output = format_test_init(idea)
+                    if RICH_AVAILABLE:
+                        console.print(test_init_output)
+                    else:
+                        print(test_init_output)
                 save_to_history(idea, score=idea_score)
             
             print()
