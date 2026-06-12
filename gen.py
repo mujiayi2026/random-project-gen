@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🎲 Random Project Generator v3.4
+🎲 Random Project Generator v3.5
 随机组合技术栈 + 项目类型 + 领域，帮你找灵感！
 ✨ 终端美化：自动检测 Rich 库，提供彩色输出和精美面板
 
@@ -39,6 +39,8 @@ Usage:
     python3 gen.py --completion zsh     # 生成 Zsh 自动补全脚本
     python3 gen.py --test-init           # 生成测试框架初始化模板
     python3 gen.py --scaffold --test-init # 骨架 + 测试框架一步到位
+    python3 gen.py --api-doc             # 生成 API 文档模板 (OpenAPI 3.0)
+    python3 gen.py --api-doc --ai        # AI 描述 + API 文档组合
 """
 
 import random
@@ -1909,6 +1911,286 @@ def format_test_init(idea, ai_desc=None):
 
 
 # ═══════════════════════════════════════════
+# API 文档生成
+# ═══════════════════════════════════════════
+
+# 每种项目类型对应的 API 端点模板
+API_ENDPOINT_TEMPLATES = {
+    "API 服务": [
+        {"method": "GET", "path": "/api/v1/items", "summary": "获取所有项目", "response": '{"data": [], "total": 0, "page": 1}'},
+        {"method": "GET", "path": "/api/v1/items/{id}", "summary": "获取单个项目", "response": '{"data": {"id": 1, "name": "example"}}'},
+        {"method": "POST", "path": "/api/v1/items", "summary": "创建新项目", "response": '{"data": {"id": 2, "name": "new"}, "message": "created"}'},
+        {"method": "PUT", "path": "/api/v1/items/{id}", "summary": "更新项目", "response": '{"data": {"id": 1, "name": "updated"}}'},
+        {"method": "DELETE", "path": "/api/v1/items/{id}", "summary": "删除项目", "response": '{"message": "deleted"}'},
+    ],
+    "Web 应用": [
+        {"method": "GET", "path": "/api/pages", "summary": "获取页面列表", "response": '{"pages": []}'},
+        {"method": "GET", "path": "/api/pages/{slug}", "summary": "获取页面详情", "response": '{"page": {}}'},
+        {"method": "POST", "path": "/api/auth/login", "summary": "用户登录", "response": '{"token": "jwt_token", "user": {}}'},
+        {"method": "POST", "path": "/api/auth/register", "summary": "用户注册", "response": '{"user": {}, "message": "registered"}'},
+        {"method": "GET", "path": "/api/user/profile", "summary": "获取用户资料", "response": '{"user": {}}'},
+    ],
+    "CLI 工具": [
+        {"method": "GET", "path": "/api/v1/tasks", "summary": "获取任务列表", "response": '{"tasks": []}'},
+        {"method": "POST", "path": "/api/v1/tasks", "summary": "创建任务", "response": '{"task": {}, "message": "created"}'},
+        {"method": "GET", "path": "/api/v1/tasks/{id}/status", "summary": "获取任务状态", "response": '{"status": "running", "progress": 42}'},
+    ],
+    "微服务": [
+        {"method": "GET", "path": "/health", "summary": "健康检查", "response": '{"status": "healthy", "uptime": 3600}'},
+        {"method": "GET", "path": "/ready", "summary": "就绪检查", "response": '{"ready": true}'},
+        {"method": "POST", "path": "/api/v1/events", "summary": "发布事件", "response": '{"event_id": "uuid", "status": "accepted"}'},
+        {"method": "GET", "path": "/api/v1/events", "summary": "获取事件列表", "response": '{"events": []}'},
+        {"method": "GET", "path": "/metrics", "summary": "Prometheus 指标", "response": '# HELP requests_total Total requests'},
+    ],
+    "数据管道": [
+        {"method": "GET", "path": "/api/v1/pipelines", "summary": "获取管道列表", "response": '{"pipelines": []}'},
+        {"method": "POST", "path": "/api/v1/pipelines", "summary": "创建管道", "response": '{"pipeline": {}, "status": "created"}'},
+        {"method": "GET", "path": "/api/v1/pipelines/{id}/status", "summary": "管道执行状态", "response": '{"status": "running", "records_processed": 1000}'},
+        {"method": "POST", "path": "/api/v1/pipelines/{id}/run", "summary": "触发管道执行", "response": '{"run_id": "uuid", "status": "queued"}'},
+    ],
+    "Telegram Bot": [
+        {"method": "POST", "path": "/webhook", "summary": "Telegram Webhook 回调", "response": '{"ok": true}'},
+        {"method": "GET", "path": "/api/v1/bot/status", "summary": "Bot 状态", "response": '{"active": true, "users": 42}'},
+        {"method": "GET", "path": "/api/v1/stats", "summary": "使用统计", "response": '{"messages": 100, "users": 42}'},
+    ],
+}
+
+# 默认端点模板（其他项目类型使用）
+API_ENDPOINT_DEFAULT = [
+    {"method": "GET", "path": "/api/v1/status", "summary": "获取服务状态", "response": '{"status": "ok", "version": "0.1.0"}'},
+    {"method": "GET", "path": "/api/v1/data", "summary": "获取数据", "response": '{"data": [], "total": 0}'},
+    {"method": "POST", "path": "/api/v1/data", "summary": "提交数据", "response": '{"id": 1, "message": "created"}'},
+]
+
+# 每种技术栈的 API 文档框架推荐
+API_DOC_FRAMEWORK = {
+    "Python": {"name": "FastAPI + Swagger", "url": "http://localhost:8000/docs", "format": "OpenAPI 3.0 (自动生成)"},
+    "Node.js": {"name": "swagger-jsdoc + swagger-ui-express", "url": "http://localhost:3000/api-docs", "format": "OpenAPI 3.0 (JSDoc 注释)"},
+    "TypeScript": {"name": "tsoa / nestjs-swagger", "url": "http://localhost:3000/api", "format": "OpenAPI 3.0 (装饰器)"},
+    "Rust": {"name": "utoipa / paperclip", "url": "http://localhost:8080/swagger-ui/", "format": "OpenAPI 3.0 (宏注解)"},
+    "Go": {"name": "swaggo/swag", "url": "http://localhost:8080/swagger/index.html", "format": "OpenAPI 2.0/3.0 (注释)"},
+    "Elixir": {"name": "Phoenix Swagger", "url": "http://localhost:4000/swagger", "format": "OpenAPI 3.0 (DSL)"},
+    "Kotlin": {"name": "SpringDoc / Ktor OpenAPI", "url": "http://localhost:8080/swagger-ui.html", "format": "OpenAPI 3.0 (注解)"},
+    "default": {"name": "Redoc / Swagger UI", "url": "http://localhost:8080/docs", "format": "OpenAPI 3.0 (YAML/JSON)"},
+}
+
+
+def generate_openapi_spec(idea, ai_desc=None):
+    """生成 OpenAPI 3.0 规范文档"""
+    tech_name = idea["tech"]["name"]
+    project_name = ai_desc["project_name"] if ai_desc else f"{tech_name}Project"
+    project_slug = project_name.lower().replace(" ", "-")
+    tagline = ai_desc["tagline"] if ai_desc else idea["theme"]["desc"]
+    theme_name = idea["theme"]["name"]
+    proj_type = idea["project"]["name"]
+
+    # 获取端点
+    endpoints = API_ENDPOINT_TEMPLATES.get(proj_type, API_ENDPOINT_DEFAULT)
+
+    # 构建 paths
+    paths_yaml = ""
+    for ep in endpoints:
+        method = ep["method"].lower()
+        paths_yaml += f'  {ep["path"]}:\n'
+        paths_yaml += f'    {method}:\n'
+        paths_yaml += f'      summary: {ep["summary"]}\n'
+        paths_yaml += f'      tags:\n'
+        paths_yaml += f'        - {theme_name}\n'
+        paths_yaml += f'      responses:\n'
+        paths_yaml += f'        "200":\n'
+        paths_yaml += f'          description: 成功\n'
+        paths_yaml += f'          content:\n'
+        paths_yaml += f'            application/json:\n'
+        paths_yaml += f'              schema:\n'
+        paths_yaml += f'                type: object\n'
+        if method == "post":
+            paths_yaml += f'      requestBody:\n'
+            paths_yaml += f'        required: true\n'
+            paths_yaml += f'        content:\n'
+            paths_yaml += f'          application/json:\n'
+            paths_yaml += f'            schema:\n'
+            paths_yaml += f'              type: object\n'
+            paths_yaml += f'              properties:\n'
+            paths_yaml += f'                name:\n'
+            paths_yaml += f'                  type: string\n'
+            paths_yaml += f'                  description: 名称\n'
+
+    spec = f"""openapi: "3.0.3"
+
+info:
+  title: "{project_name} API"
+  description: |
+    {tagline}
+
+    基于 {tech_name} 构建的 {proj_type}，专注于 {theme_name} 领域。
+  version: "0.1.0"
+  contact:
+    name: "{project_name} Team"
+    email: "team@example.com"
+  license:
+    name: "MIT"
+    url: "https://opensource.org/licenses/MIT"
+
+servers:
+  - url: http://localhost:8000
+    description: 本地开发环境
+  - url: https://api.example.com
+    description: 生产环境
+
+tags:
+  - name: {theme_name}
+    description: "{theme_name}相关接口"
+  - name: Health
+    description: "健康检查"
+
+paths:
+{paths_yaml}  /health:
+    get:
+      summary: 健康检查
+      tags:
+        - Health
+      responses:
+        "200":
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  uptime:
+                    type: integer
+                    description: 运行时间（秒）
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+      required:
+        - code
+        - message
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+"""
+    return spec
+
+
+def format_api_doc(idea, ai_desc=None):
+    """格式化 API 文档输出（支持 Rich 美化）"""
+    tech_name = idea["tech"]["name"]
+    project_name = ai_desc["project_name"] if ai_desc else f"{tech_name}Project"
+    proj_type = idea["project"]["name"]
+
+    framework = API_DOC_FRAMEWORK.get(tech_name, API_DOC_FRAMEWORK["default"])
+    endpoints = API_ENDPOINT_TEMPLATES.get(proj_type, API_ENDPOINT_DEFAULT)
+    spec = generate_openapi_spec(idea, ai_desc)
+
+    if RICH_AVAILABLE:
+        from rich.syntax import Syntax
+        from rich.console import Group
+
+        parts = []
+        parts.append(f"[bold bright_white]📖 API 文档生成 — {tech_name}[/bold bright_white]\n")
+
+        # 框架信息
+        parts.append(f"[bold bright_cyan]🔧 推荐框架:[/bold bright_cyan] [bold]{framework['name']}[/bold]")
+        parts.append(f"[bold bright_green]🌐 文档地址:[/bold bright_green] [dim]{framework['url']}[/dim]")
+        parts.append(f"[bold bright_magenta]📐 规范格式:[/bold bright_magenta] [cyan]{framework['format']}[/cyan]\n")
+
+        # 端点预览
+        ep_table = Table(title="📡 API 端点预览", box=box.SIMPLE_HEAVY,
+                         border_style="bright_yellow", show_lines=False, expand=False)
+        ep_table.add_column("方法", style="bold", width=8)
+        ep_table.add_column("路径", style="bright_cyan", width=30)
+        ep_table.add_column("描述", style="white", width=30)
+
+        method_colors = {
+            "GET": "bright_green", "POST": "bright_yellow",
+            "PUT": "bright_blue", "DELETE": "bright_red",
+        }
+        for ep in endpoints:
+            m = ep["method"]
+            color = method_colors.get(m, "white")
+            ep_table.add_row(f"[{color}]{m}[/{color}]", ep["path"], ep["summary"])
+        # 加上 health check
+        ep_table.add_row("[bright_green]GET[/bright_green]", "/health", "健康检查")
+
+        parts.append(ep_table)
+        parts.append("")
+
+        # OpenAPI spec
+        parts.append("[bold bright_yellow]📄 OpenAPI 3.0 规范 (openapi.yaml):[/bold bright_yellow]")
+        parts.append(Syntax(spec.rstrip(), "yaml", theme="monokai", line_numbers=False))
+
+        # 使用提示
+        tips = [
+            f"将规范保存为 openapi.yaml 放在项目根目录",
+            f"使用 {framework['name']} 自动生成交互式文档",
+            f"可导入 Postman / Insomnia 进行 API 测试",
+            f"使用 openapi-generator 生成客户端 SDK",
+        ]
+        tips_text = ""
+        for tip in tips:
+            tips_text += f"  💡 {tip}\n"
+        parts.append(f"\n[bold bright_cyan]🎯 使用提示:[/bold bright_cyan]\n{tips_text}")
+
+        renderable = Group(*parts)
+        return Panel(renderable, title=f"📖 API 文档 — {project_name}",
+                      border_style="bright_blue", expand=False, padding=(1, 2))
+    else:
+        lines = []
+        lines.append(f"  📖 API 文档生成 — {tech_name}")
+        lines.append(f"  {'═' * 44}")
+
+        lines.append(f"\n  🔧 推荐框架: {framework['name']}")
+        lines.append(f"  🌐 文档地址: {framework['url']}")
+        lines.append(f"  📐 规范格式: {framework['format']}")
+
+        lines.append(f"\n  📡 API 端点预览:")
+        lines.append(f"  {'─' * 40}")
+        for ep in endpoints:
+            lines.append(f"    {ep['method']:<7} {ep['path']:<30} {ep['summary']}")
+        lines.append(f"    {'GET':<7} {'/health':<30} 健康检查")
+
+        lines.append(f"\n  📄 OpenAPI 3.0 规范 (openapi.yaml):")
+        lines.append(f"  {'─' * 40}")
+        for line in spec.strip().split("\n")[:30]:
+            lines.append(f"    {line}")
+        lines.append(f"    ... (完整内容请使用 Rich 模式或导出)")
+
+        tips = [
+            f"将规范保存为 openapi.yaml 放在项目根目录",
+            f"使用 {framework['name']} 自动生成交互式文档",
+            f"可导入 Postman / Insomnia 进行 API 测试",
+        ]
+        lines.append(f"\n  🎯 使用提示:")
+        for tip in tips:
+            lines.append(f"    💡 {tip}")
+
+        lines.append(f"\n  {'═' * 44}")
+        return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════
 # 项目评分系统
 # ═══════════════════════════════════════════
 
@@ -3242,6 +3524,7 @@ _gen_completions() {{
         '--config-reset[重置为默认配置]'
         '--no-animation[禁用加载动画]'
         '--completion[生成补全脚本]'
+        '--api-doc[生成 API 文档模板]'
         '-h[显示帮助]'
         '--help[显示帮助]'
     )
@@ -3262,7 +3545,7 @@ _gen_completions() {{
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
 
-    opts="-n --count --save --hard --ai --tech --scaffold --reroll --history --stats --export --export-file --score --deps --deploy --cicd --config-show --config-set --config-reset --no-animation --completion -h --help"
+    opts="-n --count --save --hard --ai --tech --scaffold --reroll --history --stats --export --export-file --score --deps --deploy --cicd --api-doc --config-show --config-set --config-reset --no-animation --completion -h --help"
 
     case "$prev" in
         --tech)
@@ -3338,6 +3621,8 @@ def main():
                        help="生成 shell 自动补全脚本 (bash/zsh)")
     parser.add_argument("--test-init", action="store_true",
                        help="生成测试框架初始化模板 (pytest/jest/cargo test 等)")
+    parser.add_argument("--api-doc", action="store_true",
+                       help="生成 API 文档模板 (OpenAPI 3.0 规范)")
     args = parser.parse_args()
 
     # ── 补全脚本生成（优先处理，不生成创意）──
@@ -3378,7 +3663,7 @@ def main():
     
     if RICH_AVAILABLE:
         # Rich 美化头部
-        title_text = Text("🎲 Random Project Generator v3.4", style="bold bright_white")
+        title_text = Text("🎲 Random Project Generator v3.5", style="bold bright_white")
         subtitle = Text("帮你找到下一个 vibecoding 项目!", style="bright_cyan")
         header_parts = [title_text, "\n", subtitle]
         if args.ai:
@@ -3405,6 +3690,9 @@ def main():
         if args.test_init:
             header_parts.append("\n")
             header_parts.append(Text("🧪 测试框架初始化模式已启用", style="bright_cyan"))
+        if args.api_doc:
+            header_parts.append("\n")
+            header_parts.append(Text("📖 API 文档生成模式已启用", style="bright_yellow"))
         
         from rich.console import Group
         header_group = Group(*header_parts)
@@ -3414,7 +3702,7 @@ def main():
     else:
         print()
         print("  ╔══════════════════════════════════════╗")
-        print("  ║   🎲 Random Project Generator v3.4   ║")
+        print("  ║   🎲 Random Project Generator v3.5   ║")
         print("  ║   帮你找到下一个 vibecoding 项目!     ║")
         if args.ai:
             print("  ║   ✨ AI 增强模式已启用                ║")
@@ -3476,6 +3764,12 @@ def main():
                     console.print(test_init_output)
                 else:
                     print(test_init_output)
+            if args.api_doc:
+                api_doc_output = format_api_doc(idea, ai_desc if args.ai else None)
+                if RICH_AVAILABLE:
+                    console.print(api_doc_output)
+                else:
+                    print(api_doc_output)
             save_to_history(idea, ai_desc, idea_score)
         else:
             result = format_idea(idea)
@@ -3513,6 +3807,12 @@ def main():
                     console.print(test_init_output)
                 else:
                     print(test_init_output)
+            if args.api_doc:
+                api_doc_output = format_api_doc(idea)
+                if RICH_AVAILABLE:
+                    console.print(api_doc_output)
+                else:
+                    print(api_doc_output)
             save_to_history(idea, score=idea_score)
     else:
         for i in range(args.count):
@@ -3565,6 +3865,12 @@ def main():
                         console.print(test_init_output)
                     else:
                         print(test_init_output)
+                if args.api_doc:
+                    api_doc_output = format_api_doc(idea, ai_desc)
+                    if RICH_AVAILABLE:
+                        console.print(api_doc_output)
+                    else:
+                        print(api_doc_output)
                 save_to_history(idea, ai_desc, idea_score)
             else:
                 result = format_idea(idea, index=i+1 if args.count > 1 else None)
@@ -3602,6 +3908,12 @@ def main():
                         console.print(test_init_output)
                     else:
                         print(test_init_output)
+                if args.api_doc:
+                    api_doc_output = format_api_doc(idea)
+                    if RICH_AVAILABLE:
+                        console.print(api_doc_output)
+                    else:
+                        print(api_doc_output)
                 save_to_history(idea, score=idea_score)
             
             print()
